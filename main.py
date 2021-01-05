@@ -25,7 +25,8 @@ def eval_policy(policy, eval_env, seed, eval_episodes=3, render=True):
         while not done:
             action = policy.select_action(state)
             state, reward, done, _ = eval_env.step(action)
-            eval_env.render()
+            if render:
+                eval_env.render()
             avg_reward += reward
 
     avg_reward /= eval_episodes
