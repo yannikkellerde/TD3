@@ -8,6 +8,7 @@ import os
 import time
 from tqdm import tqdm,trange
 
+import pickle
 from my_replay_buffer import ReplayBuffer
 from my_TD3 import TD3
 import OurDDPG
@@ -18,28 +19,31 @@ import DDPG
 def eval_policy(policy, eval_env, seed, eval_episodes=3, render=True):
     eval_env.seed(seed + 100)
 
+    avg_true = 0.
     avg_reward = 0.
     print("Evaluating")
     for _ in trange(eval_episodes):
         state, done = eval_env.reset(use_gui=render), False
         while not done:
             action = policy.select_action(state)
-            state, reward, done, _ = eval_env.step(action)
+            state, reward, done, info = eval_env.step(action)
             if render:
                 eval_env.render()
+            avg_true += info["true_reward"]
             avg_reward += reward
 
     avg_reward /= eval_episodes
+    avg_true /= eval_episodes
 
     print("---------------------------------------")
-    print(f"Evaluation over {eval_episodes} episodes: {avg_reward:.3f}")
+    print(f"Evaluation over {eval_episodes} episodes: {avg_reward:.3f} avg true reward: {avg_true:.3f}")
     print("---------------------------------------")
     eval_env.reset(use_gui=False)
-    return avg_reward
+    return avg_true
 
-def update_temperature(env,timestep,start_increase,start_temperature=0.05):
-    time_full_temp = 4e5
-    env.temperature = min(1,max(0,(timestep-start_increase)/time_full_temp)*(1-start_temperature)+start_temperature)
+def update_temperature(env,timestep,start_increase,start_temperature):
+    time_full_temp = 2e5
+    env.temperature = min(1,max(0,(timestep-start_increase)/time_full_temp*(1-start_temperature)+start_temperature))
 
 
 if __name__ == "__main__":
@@ -49,7 +53,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--policy", default="TD3")                  # Policy name (TD3, DDPG or OurDDPG)
     parser.add_argument("--env", default="water_pouring:Pouring-mdp-v0")          # OpenAI gym environment name
-    parser.add_argument("--seed", default=0, type=int)              # Sets Gym, PyTorch and Numpy seeds
+    parser.add_argument("--seed", default=1, type=int)              # Sets Gym, PyTorch and Numpy seeds
     parser.add_argument("--start_timesteps", default=2e5, type=int) # Time steps initial random policy is used
     parser.add_argument("--eval_freq", default=1e2, type=int)       # How often (time steps) we evaluate
     parser.add_argument("--max_timesteps", default=1e6, type=int)   # Max time steps to run environment
@@ -59,12 +63,18 @@ if __name__ == "__main__":
     parser.add_argument("--tau", default=0.005, type=float)                     # Target network update rate
     parser.add_argument("--policy_noise", default=0.2, type=float)              # Noise added to target policy during critic update
     parser.add_argument("--noise_clip", default=0.5, type=float)                # Range to clip target policy noise
+    parser.add_argument("--start_temperature", default=0.05, type=float)
     parser.add_argument("--policy_freq", default=2, type=int)       # Frequency of delayed policy updates
     parser.add_argument("--save_model", action="store_true")        # Save model and optimizer parameters
     parser.add_argument("--load_model", default="")                 # Model load file name, "" doesn't load, "default" uses file_name
     parser.add_argument("--render", action="store_true")
+    parser.add_argument("--save_replay_buffer", action="store_true")
+    parser.add_argument("--load_replay_buffer",action="store_true")
     args = parser.parse_args()
     args.save_model = True
+
+    REPLAY_BUFFER_PATH = "replay_buffers"
+    os.makedirs(REPLAY_BUFFER_PATH,exist_ok=True)
 
     file_name = f"{args.policy}_{args.env}_{args.seed}"
     print("---------------------------------------")
@@ -79,7 +89,7 @@ if __name__ == "__main__":
 
     
     env = gym.make(args.env)
-    env.temperature = 0
+    env.temperature = args.start_temperature
     print("made Env")
 
 
@@ -113,7 +123,11 @@ if __name__ == "__main__":
         policy_file = file_name if args.load_model == "default" else args.load_model
         policy.load(f"./models/{policy_file}")
 
-    replay_buffer = ReplayBuffer(env.observation_space, env.action_space)
+    if args.load_replay_buffer:
+        args.start_timesteps=0
+        replay_buffer = ReplayBuffer(env.observation_space, env.action_space,load_folder=REPLAY_BUFFER_PATH)
+    else:
+        replay_buffer = ReplayBuffer(env.observation_space, env.action_space)
     
     # Evaluate untrained policy
     evaluations = [eval_policy(policy, env, args.seed,render=args.render)]
@@ -133,6 +147,8 @@ if __name__ == "__main__":
         if t < args.start_timesteps:
             action = env.action_space.sample()
         else:
+            if t==args.start_timesteps and args.save_replay_buffer:
+                replay_buffer.save(REPLAY_BUFFER_PATH)
             action = (
                 policy.select_action(state)
                 + np.random.normal(0, max_action * args.expl_noise, size=env.action_space.shape[0])
@@ -152,6 +168,8 @@ if __name__ == "__main__":
             if t == args.start_timesteps:
                 print("Starting training")
             policy.train(replay_buffer, args.batch_size)
+            #batch = replay_buffer.sample(256)
+            #policy._actor_learn(batch[0],batch[1])
 
         if done: 
             # +1 to account for 0 indexing. +0 on ep_timesteps since it will increment +1 even if done=True
@@ -166,7 +184,7 @@ if __name__ == "__main__":
             episode_true_reward = 0
             episode_timesteps = 0
             episode_num += 1 
-            update_temperature(env,t,args.start_timesteps)
+            update_temperature(env,t,args.start_timesteps,args.start_temperature)
             if episode_num % args.eval_freq == 0 and (episode_num==args.eval_freq or t>args.start_timesteps):
                 evaluations.append(eval_policy(policy, env, args.seed,render=args.render))
                 np.save(f"./results/{file_name}", evaluations)
