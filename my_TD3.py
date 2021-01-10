@@ -18,15 +18,17 @@ class Actor_mdp(nn.Module):
         super(Actor_mdp, self).__init__()
         
         self.num_features = 64
+        self.num_linear = 128
 
         self.conv1 = nn.Conv2d(1,self.num_features*2,kernel_size=(1,obs_space[1].shape[1]),stride=1)
         self.conv2 = nn.Conv1d(self.num_features*2,self.num_features,kernel_size=1,stride=1)
         
         self.avg_pool = nn.AvgPool2d(kernel_size = (1,obs_space[1].shape[0]))
         #self.b1 = nn.BatchNorm1d(self.num_features+obs_space[0].shape[0]) This somehow does not work
-        self.l1 = nn.Linear(self.num_features+obs_space[0].shape[0],self.num_features)
+        self.l1 = nn.Linear(self.num_features+obs_space[0].shape[0],self.num_linear)
         #self.b2 = nn.BatchNorm1d(self.num_features)
-        self.l2 = nn.Linear(self.num_features,action_space.shape[0])
+        self.l2 = nn.Linear(self.num_linear,self.num_linear)
+        self.l3 = nn.Linear(self.num_linear,action_space.shape[0])
         
     def forward(self, state_features, state_particles):
         a = torch.unsqueeze(state_particles,1)
@@ -39,7 +41,8 @@ class Actor_mdp(nn.Module):
         #a = self.b1(a)
         a = F.relu(self.l1(a))
         #a = self.b2(a)
-        a = torch.tanh(self.l2(a))
+        a = F.relu(self.l2(a))
+        a = torch.tanh(self.l3(a))
         return a
 
 class Critic_mdp(nn.Module):
@@ -47,6 +50,7 @@ class Critic_mdp(nn.Module):
         super(Critic_mdp, self).__init__()
 
         self.num_features = 64
+        self.num_linear = 128
 
         # Q1 architecture
         self.q1_conv1 = nn.Conv2d(1,self.num_features*2,kernel_size=(1,obs_space[1].shape[1]),stride=1)
@@ -55,9 +59,10 @@ class Critic_mdp(nn.Module):
         self.q1_avg_pool = nn.AvgPool2d(kernel_size = (1,obs_space[1].shape[0]))
         
         #self.q1_b1 = nn.BatchNorm1d(self.num_features+obs_space[0].shape[0]+action_space.shape[0])
-        self.q1_l1 = nn.Linear(self.num_features+obs_space[0].shape[0]+action_space.shape[0],self.num_features)
+        self.q1_l1 = nn.Linear(self.num_features+obs_space[0].shape[0]+action_space.shape[0],self.num_linear)
+        self.q1_l2 = nn.Linear(self.num_linear,self.num_linear)
         #self.q1_b2 = nn.BatchNorm1d(self.num_features) I am too stupid for batch normalization
-        self.q1_l2 = nn.Linear(self.num_features,1)
+        self.q1_l3 = nn.Linear(self.num_linear,1)
 
         # Q1 architecture
         self.q2_conv1 = nn.Conv2d(1,self.num_features*2,kernel_size=(1,obs_space[1].shape[1]),stride=1)
@@ -65,9 +70,10 @@ class Critic_mdp(nn.Module):
 
         self.q2_avg_pool = nn.AvgPool2d(kernel_size = (1,obs_space[1].shape[0]))
         #self.q2_b1 = nn.BatchNorm1d(self.num_features+obs_space[0].shape[0]+action_space.shape[0])
-        self.q2_l1 = nn.Linear(self.num_features+obs_space[0].shape[0]+action_space.shape[0],self.num_features)
+        self.q2_l1 = nn.Linear(self.num_features+obs_space[0].shape[0]+action_space.shape[0],self.num_linear)
+        self.q2_l2 = nn.Linear(self.num_linear,self.num_linear)
         #self.q2_b2 = nn.BatchNorm1d(self.num_features)
-        self.q2_l2 = nn.Linear(self.num_features,1)
+        self.q2_l3 = nn.Linear(self.num_linear,1)
 
 
 
@@ -81,8 +87,9 @@ class Critic_mdp(nn.Module):
         q1 = torch.cat([q1,state_features,action],1)
         #q1 = self.q1_b1(q1)
         q1 = F.relu(self.q1_l1(q1))
+        q1 = F.relu(self.q1_l2(q1))
         #q1 = self.q1_b2(q1)
-        q1 = self.q1_l2(q1)
+        q1 = self.q1_l3(q1)
 
         q2 = torch.unsqueeze(state_particles,1)
         q2 = F.relu(self.q2_conv1(q2))
@@ -93,8 +100,9 @@ class Critic_mdp(nn.Module):
         q2 = torch.cat([q2,state_features,action],1)
         #q2 = self.q2_b1(q2)
         q2 = F.relu(self.q2_l1(q2))
+        q2 = F.relu(self.q2_l2(q2))
         #q2 = self.q2_b2(q2)
-        q2 = self.q2_l2(q2)
+        q2 = self.q2_l3(q2)
 
         return q1, q2
 
@@ -109,8 +117,9 @@ class Critic_mdp(nn.Module):
         q1 = torch.cat([q1,state_features,action],1)
         #q1 = self.q1_b1(q1)
         q1 = F.relu(self.q1_l1(q1))
+        q1 = F.relu(self.q1_l2(q1))
         #q1 = self.q1_b2(q1)
-        q1 = self.q1_l2(q1)
+        q1 = self.q1_l3(q1)
         return q1
 
 class TD3(object):

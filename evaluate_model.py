@@ -26,8 +26,8 @@ def evalstuff(state,action,td3):
     #print("likestuff",td3.actor(features,particles),td3.critic.Q1(features,particles, td3.actor(features,particles)))
     print("action",action)
     print("chosen",policy.eval_q(state,action))
-    print("zero",policy.eval_q(state,[0,0,0]))
-    print("special",policy.eval_q(state,[-1,0,1]))
+    print("zero",policy.eval_q(state,[0]))
+    print("special",policy.eval_q(state,[1]))
     #print("one",policy.eval_q(state,[1,1,1]))
 
 def train(state,td3):
@@ -52,6 +52,7 @@ def eval_policy(policy, eval_env, seed, eval_episodes=10):
         b = 0
         while not done:
             b+=1
+            print("obs",state[0])
             action = policy.select_action(state)
             #evalstuff(state,action,policy)
             #exit()
