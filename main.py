@@ -4,6 +4,7 @@ import gym
 import numpy as np
 import torch
 import argparse
+import time
 import os
 import time
 from tqdm import tqdm,trange
@@ -13,10 +14,11 @@ from my_replay_buffer import ReplayBuffer
 from my_TD3 import TD3
 import OurDDPG
 import DDPG
+from rtpt.rtpt import RTPT
 
 # Runs policy for X episodes and returns average reward
 # A fixed seed is used for the eval environment
-def eval_policy(policy, eval_env, seed, eval_episodes=3, render=True):
+def eval_policy(policy, eval_env, seed, eval_episodes=10, render=True):
     eval_env.seed(seed + 100)
 
     avg_true = 0.
@@ -56,7 +58,7 @@ if __name__ == "__main__":
     parser.add_argument("--seed", default=1, type=int)              # Sets Gym, PyTorch and Numpy seeds
     parser.add_argument("--start_timesteps", default=2e5, type=int) # Time steps initial random policy is used
     parser.add_argument("--eval_freq", default=1e2, type=int)       # How often (time steps) we evaluate
-    parser.add_argument("--max_timesteps", default=1e6, type=int)   # Max time steps to run environment
+    parser.add_argument("--max_timesteps", default=4e5, type=int)   # Max time steps to run environment
     parser.add_argument("--expl_noise", default=0.1, type=float)                # Std of Gaussian exploration noise
     parser.add_argument("--batch_size", default=256, type=int)      # Batch size for both actor and critic
     parser.add_argument("--discount", default=0.99, type=float)                 # Discount factor
@@ -64,19 +66,24 @@ if __name__ == "__main__":
     parser.add_argument("--policy_noise", default=0.2, type=float)              # Noise added to target policy during critic update
     parser.add_argument("--noise_clip", default=0.5, type=float)                # Range to clip target policy noise
     parser.add_argument("--start_temperature", default=0.05, type=float)
+    parser.add_argument("--time_step_punish", default=0.1, type=float)
     parser.add_argument("--policy_freq", default=2, type=int)       # Frequency of delayed policy updates
     parser.add_argument("--save_model", action="store_true")        # Save model and optimizer parameters
-    parser.add_argument("--load_model", default="")                 # Model load file name, "" doesn't load, "default" uses file_name
+    parser.add_argument("--load_model", default="")                 # Model load file name, "" doesn't load, "default" uses folder_name
     parser.add_argument("--render", action="store_true")
     parser.add_argument("--save_replay_buffer", action="store_true")
     parser.add_argument("--load_replay_buffer",action="store_true")
+    parser.add_argument("--folder_name", type=str, default="")
     args = parser.parse_args()
     args.save_model = True
 
     REPLAY_BUFFER_PATH = "replay_buffers"
     os.makedirs(REPLAY_BUFFER_PATH,exist_ok=True)
 
-    file_name = f"{args.policy}_{args.env}_{args.seed}"
+    if args.folder_name == "":
+        folder_name = f"{args.policy}_{args.env}_{args.seed}"
+    else:
+        folder_name = args.folder_name
     print("---------------------------------------")
     print(f"Policy: {args.policy}, Env: {args.env}, Seed: {args.seed}")
     print("---------------------------------------")
@@ -89,6 +96,7 @@ if __name__ == "__main__":
 
     
     env = gym.make(args.env)
+    env.time_step_punish = args.time_step_punish
     env.temperature = args.start_temperature
     print("made Env")
 
@@ -120,8 +128,8 @@ if __name__ == "__main__":
         policy = DDPG.DDPG(**kwargs)
 
     if args.load_model != "":
-        policy_file = file_name if args.load_model == "default" else args.load_model
-        policy.load(f"./models/{policy_file}")
+        policy_folder = folder_name if args.load_model == "default" else args.load_model
+        policy.load(policy_folder)
 
     if args.load_replay_buffer:
         args.start_timesteps=0
@@ -138,9 +146,14 @@ if __name__ == "__main__":
     episode_true_reward = 0
     episode_timesteps = 0
     episode_num = 0
+
+    rtpt = RTPT(name_initials='YK', experiment_name='WaterPouring', max_iterations=int(args.max_timesteps))
+
+    rtpt.start()
+
     start = time.perf_counter()
+
     for t in range(int(args.max_timesteps)):
-        
         episode_timesteps += 1
 
         # Select action randomly or according to policy
@@ -170,7 +183,7 @@ if __name__ == "__main__":
             policy.train(replay_buffer, args.batch_size)
             #batch = replay_buffer.sample(256)
             #policy._actor_learn(batch[0],batch[1])
-
+        rtpt.step(subtitle=f"reward={evaluations[-1]:2.2f}")
         if done: 
             # +1 to account for 0 indexing. +0 on ep_timesteps since it will increment +1 even if done=True
             print(f"episode time {time.perf_counter()-start}")
@@ -187,6 +200,7 @@ if __name__ == "__main__":
             update_temperature(env,t,args.start_timesteps,args.start_temperature)
             if episode_num % args.eval_freq == 0 and (episode_num==args.eval_freq or t>args.start_timesteps):
                 evaluations.append(eval_policy(policy, env, args.seed,render=args.render))
-                np.save(f"./results/{file_name}", evaluations)
-                if args.save_model: policy.save(f"./models/{file_name}")
+                np.save(f"./results/{folder_name}.npy", evaluations)
+                if args.save_model: policy.save(folder_name)
         # Evaluate episode
+    replay_buffer.save(REPLAY_BUFFER_PATH+"_"+str(time.time()))
