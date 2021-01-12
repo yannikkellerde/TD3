@@ -200,7 +200,7 @@ if __name__ == "__main__":
             update_temperature(env,t,args.start_timesteps,args.start_temperature)
             if episode_num % args.eval_freq == 0 and (episode_num==args.eval_freq or t>args.start_timesteps):
                 evaluations.append(eval_policy(policy, env, args.seed,render=args.render))
-                np.save(f"./results/{os.path.basepath(folder_name)}.npy", evaluations)
+                np.save(f"./results/{os.path.basename(folder_name)}.npy", evaluations)
                 if args.save_model: policy.save(folder_name)
         # Evaluate episode
     replay_buffer.save(REPLAY_BUFFER_PATH+"_"+str(time.time()))
