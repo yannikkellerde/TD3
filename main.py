@@ -56,7 +56,8 @@ if __name__ == "__main__":
     parser.add_argument("--policy", default="TD3")                  # Policy name (TD3, DDPG or OurDDPG)
     parser.add_argument("--env", default="water_pouring:Pouring-mdp-v0")          # OpenAI gym environment name
     parser.add_argument("--seed", default=1, type=int)              # Sets Gym, PyTorch and Numpy seeds
-    parser.add_argument("--start_timesteps", default=2e5, type=int) # Time steps initial random policy is used
+    parser.add_argument("--start_training", default=2e5, type=int) # Time steps before starting training
+    parser.add_argument("--start_policy", default=2e5, type=int) # Time steps initial random policy is used
     parser.add_argument("--eval_freq", default=1e2, type=int)       # How often (time steps) we evaluate
     parser.add_argument("--max_timesteps", default=4e5, type=int)   # Max time steps to run environment
     parser.add_argument("--expl_noise", default=0.1, type=float)                # Std of Gaussian exploration noise
@@ -133,6 +134,7 @@ if __name__ == "__main__":
 
     if args.load_replay_buffer:
         args.start_timesteps=0
+        args.start_training = 0
         replay_buffer = ReplayBuffer(env.observation_space, env.action_space,load_folder=REPLAY_BUFFER_PATH)
     else:
         replay_buffer = ReplayBuffer(env.observation_space, env.action_space)
@@ -157,10 +159,10 @@ if __name__ == "__main__":
         episode_timesteps += 1
 
         # Select action randomly or according to policy
-        if t < args.start_timesteps:
+        if t < args.start_policy:
             action = env.action_space.sample()
         else:
-            if t==args.start_timesteps and args.save_replay_buffer:
+            if t==args.start_policy and args.save_replay_buffer:
                 replay_buffer.save(REPLAY_BUFFER_PATH)
             action = (
                 policy.select_action(state)
@@ -177,8 +179,8 @@ if __name__ == "__main__":
         episode_true_reward += info["true_reward"]
 
         # Train agent after collecting sufficient data
-        if t >= args.start_timesteps:
-            if t == args.start_timesteps:
+        if t >= args.start_training:
+            if t == args.start_training:
                 print("Starting training")
             policy.train(replay_buffer, args.batch_size)
             #batch = replay_buffer.sample(256)
@@ -197,10 +199,11 @@ if __name__ == "__main__":
             episode_true_reward = 0
             episode_timesteps = 0
             episode_num += 1 
-            update_temperature(env,t,args.start_timesteps,args.start_temperature)
-            if episode_num % args.eval_freq == 0 and (episode_num==args.eval_freq or t>args.start_timesteps):
+            update_temperature(env,t,args.start_policy,args.start_temperature)
+            if episode_num % args.eval_freq == 0 and (episode_num==args.eval_freq or t>args.start_training):
                 evaluations.append(eval_policy(policy, env, args.seed,render=args.render))
                 np.save(f"./results/{os.path.basename(folder_name)}.npy", evaluations)
                 if args.save_model: policy.save(folder_name)
         # Evaluate episode
+    os.makedirs(REPLAY_BUFFER_PATH+"_"+str(time.time()))
     replay_buffer.save(REPLAY_BUFFER_PATH+"_"+str(time.time()))
