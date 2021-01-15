@@ -5,7 +5,7 @@ import os
 
 
 class ReplayBuffer(object):
-    def __init__(self, obs_space, action_space, max_size=int(2e5), load_folder=None):
+    def __init__(self, obs_space, action_space, max_size=int(6e5), load_folder=None):
         self.max_size = max_size
         self.store_np = ["state_features","state_particles","action",
                          "next_state_features","next_state_particles","reward",
