@@ -206,5 +206,4 @@ if __name__ == "__main__":
                 np.save(f"./results/{os.path.basename(folder_name)}.npy", evaluations)
                 if args.save_model and evaluations[-1]==np.max(evaluations): policy.save(folder_name)
         # Evaluate episode
-    os.makedirs(REPLAY_BUFFER_PATH+"_"+str(time.time()))
     replay_buffer.save(REPLAY_BUFFER_PATH+"_"+str(time.time()))
