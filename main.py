@@ -60,7 +60,7 @@ if __name__ == "__main__":
     parser.add_argument("--start_policy", default=2e5, type=int) # Time steps initial random policy is used
     parser.add_argument("--eval_freq", default=1e2, type=int)       # How often (time steps) we evaluate
     parser.add_argument("--max_timesteps", default=4e5, type=int)   # Max time steps to run environment
-    parser.add_argument("--expl_noise", default=0.1, type=float)                # Std of Gaussian exploration noise
+    parser.add_argument("--expl_noise", default=0.2, type=float)                # Std of Gaussian exploration noise
     parser.add_argument("--batch_size", default=256, type=int)      # Batch size for both actor and critic
     parser.add_argument("--discount", default=0.99, type=float)                 # Discount factor
     parser.add_argument("--tau", default=0.005, type=float)                     # Target network update rate
@@ -75,6 +75,7 @@ if __name__ == "__main__":
     parser.add_argument("--save_replay_buffer", action="store_true")
     parser.add_argument("--load_replay_buffer",action="store_true")
     parser.add_argument("--folder_name", type=str, default="")
+    parser.add_argument("--experiment_name",type=str, default="WaterPouring")
     args = parser.parse_args()
     args.save_model = True
 
@@ -149,7 +150,7 @@ if __name__ == "__main__":
     episode_timesteps = 0
     episode_num = 0
 
-    rtpt = RTPT(name_initials='YK', experiment_name='WaterPouring', max_iterations=int(args.max_timesteps))
+    rtpt = RTPT(name_initials='YK', experiment_name=args.experiment_name, max_iterations=int(args.max_timesteps))
 
     rtpt.start()
 
@@ -203,7 +204,7 @@ if __name__ == "__main__":
             if episode_num % args.eval_freq == 0 and (episode_num==args.eval_freq or t>args.start_training):
                 evaluations.append(eval_policy(policy, env, args.seed,render=args.render))
                 np.save(f"./results/{os.path.basename(folder_name)}.npy", evaluations)
-                if args.save_model: policy.save(folder_name)
+                if args.save_model and evaluations[-1]==np.max(evaluations): policy.save(folder_name)
         # Evaluate episode
     os.makedirs(REPLAY_BUFFER_PATH+"_"+str(time.time()))
     replay_buffer.save(REPLAY_BUFFER_PATH+"_"+str(time.time()))
