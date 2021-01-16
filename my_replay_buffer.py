@@ -27,7 +27,7 @@ class ReplayBuffer(object):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def save(self,folder):
-        os.makedirs(folder)
+        os.makedirs(folder,exist_ok=True)
         for attrib in self.store_pkl:
             with open(os.path.join(folder,attrib+".pkl"), "wb") as f:
                 pickle.dump(self.__dict__[attrib],f,protocol=4)

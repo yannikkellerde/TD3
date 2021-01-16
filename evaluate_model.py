@@ -6,6 +6,7 @@ import torch
 import argparse
 import os
 import time
+import matplotlib.pyplot as plt
 from tqdm import tqdm,trange
 
 from my_replay_buffer import ReplayBuffer
@@ -25,10 +26,12 @@ def evalstuff(state,action,td3):
     #td3.critic.eval()
     #print("likestuff",td3.actor(features,particles),td3.critic.Q1(features,particles, td3.actor(features,particles)))
     print("action",action)
-    print("chosen",policy.eval_q(state,action))
-    print("zero",policy.eval_q(state,[0]))
-    print("special",policy.eval_q(state,[1]))
+    q_val = policy.eval_q(state,action)
+    print("chosen",q_val)
+    #print("zero",policy.eval_q(state,[0]))
+    #print("special",policy.eval_q(state,[1]))
     #print("one",policy.eval_q(state,[1,1,1]))
+    return (q_val[0][0]+q_val[1][0])/2
 
 def train(state,td3):
     batch_size = 32
@@ -42,22 +45,51 @@ def train(state,td3):
     particles = torch.cat(all_part,0)
     td3._actor_learn(features,particles)
 
-def eval_policy(policy, eval_env, seed, eval_episodes=10):
+def plot_q_compare(rew_lists,q_lists,discount):
+    maxi = max(len(x) for x in rew_lists)
+    print([len(x) for x in rew_lists])
+    emp_rewards = [0 for _ in range(len(rew_lists))]
+    emp_avg = []
+    q_avg = []
+    for i in range(maxi-1,-1,-1):
+        for j in range(len(rew_lists)):
+            emp_pot = []
+            q_pot = []
+            if len(rew_lists[j]) > i:
+                emp_rewards[j] = emp_rewards[j]*discount + rew_lists[j][i]
+                emp_pot.append(emp_rewards[j])
+                q_pot.append(q_lists[j][i])
+        emp_avg.append(np.mean(emp_pot))
+        q_avg.append(np.mean(q_pot))
+    emp_avg.reverse()
+    q_avg.reverse()
+    plt.plot(emp_avg,label="empirical Q value (discounted)")
+    plt.plot(q_avg,label="TD3 computed Q value")
+    plt.xlabel("time step")
+    plt.ylabel("Q-value")
+    plt.legend()
+    plt.show()
+        
+
+def eval_policy(policy, eval_env, seed, eval_episodes=1):
     eval_env.seed(seed + 100)
 
-    avg_reward = 0.
+    all_q_val_lists = []
+    all_reward_lists = []
     print("Evaluating")
     for _ in trange(eval_episodes):
         state, done = eval_env.reset(use_gui=True), False
         b = 0
+        reward_list = []
+        q_val_list = []
         while not done:
             b+=1
-            print("obs",state[0])
+            #print("obs",state[0])
             action = policy.select_action(state)
             #evalstuff(state,action,policy)
             #exit()
             #action = policy.select_action(state)
-            evalstuff(state,action,policy)
+            q_val_list.append(evalstuff(state,action,policy))
             #if b==5:
             #    while 1:
             #        action = policy.select_action(state)
@@ -67,10 +99,11 @@ def eval_policy(policy, eval_env, seed, eval_episodes=10):
             #action = [-1,-1,-1]
             state, reward, done, _ = eval_env.step(action)
             eval_env.render()
-            avg_reward += reward
-
-    avg_reward /= eval_episodes
-
+            reward_list.append(reward)
+        all_q_val_lists.append(q_val_list)
+        all_reward_lists.append(reward_list)
+    avg_reward = np.mean([np.sum(x) for x in all_reward_lists])
+    plot_q_compare(all_reward_lists,all_q_val_lists,args.discount)
     print("---------------------------------------")
     print(f"Evaluation over {eval_episodes} episodes: {avg_reward:.3f}")
     print("---------------------------------------")
@@ -82,7 +115,7 @@ if __name__ == "__main__":
     parser.add_argument("--policy", default="TD3")                  # Policy name (TD3, DDPG or OurDDPG)
     parser.add_argument("--env", default="water_pouring:Pouring-mdp-full-v0")          # OpenAI gym environment name
     parser.add_argument("--seed", default=0, type=int)              # Sets Gym, PyTorch and Numpy seeds
-    parser.add_argument("--start_timesteps", default=5e4, type=int)# Time steps initial random policy is used
+    parser.add_argument("--start_timesteps", default=5e4, type=int) # Time steps initial random policy is used
     parser.add_argument("--eval_freq", default=1e2, type=int)       # How often (time steps) we evaluate
     parser.add_argument("--max_timesteps", default=1e6, type=int)   # Max time steps to run environment
     parser.add_argument("--expl_noise", default=0.1, type=float)                # Std of Gaussian exploration noise
@@ -95,7 +128,7 @@ if __name__ == "__main__":
     parser.add_argument("--save_model", action="store_true")        # Save model and optimizer parameters
     parser.add_argument("--load_model", default="")                 # Model load file name, "" doesn't load, "default" uses file_name
     args = parser.parse_args()
-
+    
     env = gym.make(args.env)
     print(env.observation_space,env.action_space)
     print("made Env")

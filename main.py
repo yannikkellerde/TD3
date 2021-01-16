@@ -7,6 +7,7 @@ import argparse
 import time
 import os
 import time
+import json
 from tqdm import tqdm,trange
 
 import pickle
@@ -66,7 +67,7 @@ if __name__ == "__main__":
     parser.add_argument("--tau", default=0.005, type=float)                     # Target network update rate
     parser.add_argument("--policy_noise", default=0.2, type=float)              # Noise added to target policy during critic update
     parser.add_argument("--noise_clip", default=0.5, type=float)                # Range to clip target policy noise
-    parser.add_argument("--start_temperature", default=0.05, type=float)
+    parser.add_argument("--start_temperature", default=1, type=float)
     parser.add_argument("--time_step_punish", default=0.1, type=float)
     parser.add_argument("--policy_freq", default=2, type=int)       # Frequency of delayed policy updates
     parser.add_argument("--save_model", action="store_true")        # Save model and optimizer parameters
@@ -86,6 +87,11 @@ if __name__ == "__main__":
         folder_name = f"{args.policy}_{args.env}_{args.seed}"
     else:
         folder_name = args.folder_name
+
+    os.makedirs("parameters")
+    with open(os.path.join("parameters",os.path.basename(folder_name)+".json"),"w") as f:
+        json.dump(args.__dict__,f)
+
     print("---------------------------------------")
     print(f"Policy: {args.policy}, Env: {args.env}, Seed: {args.seed}")
     print("---------------------------------------")
@@ -204,6 +210,7 @@ if __name__ == "__main__":
             if episode_num % args.eval_freq == 0 and (episode_num==args.eval_freq or t>args.start_training):
                 evaluations.append(eval_policy(policy, env, args.seed,render=args.render))
                 np.save(f"./results/{os.path.basename(folder_name)}.npy", evaluations)
-                if args.save_model and evaluations[-1]==np.max(evaluations): policy.save(folder_name)
+                if args.save_model: policy.save(folder_name+f"_ep-{episode_num}_ev-{evaluations[-1]}")
         # Evaluate episode
     replay_buffer.save(REPLAY_BUFFER_PATH+"_"+str(time.time()))
+    policy.save(folder_name_final)
