@@ -4,6 +4,7 @@ from my_replay_buffer import ReplayBuffer
 import numpy as np
 import sys,os
 import argparse
+from rtpt.rtpt import RTPT
 from tqdm import trange,tqdm
 
 parser = argparse.ArgumentParser()
@@ -14,6 +15,7 @@ parser.add_argument("--noise",type=float,default=0.3)
 parser.add_argument("--num_inject",type=int,default=1e5)
 args = parser.parse_args()
 
+rtpt = RTPT(name_initials='YK', experiment_name="initialization", max_iterations=int(args.num_inject))
 env = gym.make(args.env,use_gui=False)
 replay_buffer = ReplayBuffer(env.observation_space,env.action_space)#,load_folder=args.replay_buffer_path)
 print("loaded_replay_buffer")
@@ -21,6 +23,7 @@ policy = np.load(args.policy_path)
 state = env.reset()
 epi_pos = 0
 rewsum = 0
+rtpt.start()
 for i in trange(args.num_inject):
     if len(policy) > epi_pos:
         action = policy[epi_pos]
@@ -33,6 +36,7 @@ for i in trange(args.num_inject):
     done_bool = float(done) if epi_pos < env._max_episode_steps else 0
     replay_buffer.add(state,action,new_state,reward,done_bool)
     state = new_state
+    rtpt.step()
     if done:
         epi_pos = 0
         rewsum = 0
