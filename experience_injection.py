@@ -26,7 +26,7 @@ state = env.reset()
 epi_pos = 0
 rewsum = 0
 rtpt.start()
-for i in trange(args.num_inject):
+for i in trange(int(args.num_inject)):
     if len(policy) > epi_pos:
         action = policy[epi_pos]
     else:
