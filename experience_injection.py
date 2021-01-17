@@ -19,7 +19,7 @@ args = parser.parse_args()
 rtpt = RTPT(name_initials='YK', experiment_name="initialization", max_iterations=int(args.num_inject))
 env = gym.make(args.env,use_gui=False)
 env.time_step_punish = args.time_step_punish
-replay_buffer = ReplayBuffer(env.observation_space,env.action_space)#,load_folder=args.replay_buffer_path)
+replay_buffer = ReplayBuffer(env.observation_space,env.action_space,load_folder=args.replay_buffer_path)
 print("loaded_replay_buffer")
 policy = np.load(args.policy_path)
 state = env.reset()
