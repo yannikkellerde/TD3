@@ -48,6 +48,9 @@ def update_temperature(env,timestep,start_increase,start_temperature):
     time_full_temp = 2e5
     env.temperature = min(1,max(0,(timestep-start_increase)/time_full_temp*(1-start_temperature)+start_temperature))
 
+"""
+python3.7 main.py --seed 99 --env water_pouring:Pouring-mdp-full-v0 --start_policy 300000 --start_training 600000 --max_timesteps 1500000 --policy_uncertainty 0.3 --expl_noise 0.3 --time_step_punish 1 --load_model models/full_base/ --save_replay_buffer --folder_name models/full-tsp-1-0 --experiment_name full-tsp_1-0
+"""
 
 if __name__ == "__main__":
     FILE_PATH = os.path.abspath(os.path.dirname(__file__))
@@ -179,7 +182,7 @@ if __name__ == "__main__":
             ).clip(-max_action, max_action)
         # Perform action
         next_state, reward, done, info = env.step(action)
-        if done_swap:
+        if args.done_swap:
             done_bool = float(done) if episode_timesteps < env._max_episode_steps else 0
         else:
             done_bool = float(done)
