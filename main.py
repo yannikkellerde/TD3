@@ -88,7 +88,7 @@ if __name__ == "__main__":
     else:
         folder_name = args.folder_name
 
-    os.makedirs("parameters")
+    os.makedirs("parameters",exist_ok=True)
     with open(os.path.join("parameters",os.path.basename(folder_name)+".json"),"w") as f:
         json.dump(args.__dict__,f)
 
@@ -213,4 +213,4 @@ if __name__ == "__main__":
                 if args.save_model: policy.save(folder_name+f"_ep-{episode_num}_ev-{evaluations[-1]}")
         # Evaluate episode
     replay_buffer.save(REPLAY_BUFFER_PATH+"_"+str(time.time()))
-    policy.save(folder_name_final)
+    policy.save(folder_name+"_final")
