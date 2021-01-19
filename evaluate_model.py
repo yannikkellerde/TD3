@@ -121,6 +121,7 @@ if __name__ == "__main__":
     parser.add_argument("--expl_noise", default=0.1, type=float)                # Std of Gaussian exploration noise
     parser.add_argument("--batch_size", default=256, type=int)      # Batch size for both actor and critic
     parser.add_argument("--discount", default=0.99, type=float)                 # Discount factor
+    parser.add_argument("--policy_uncertainty",default=0.3, type=float)    # Std of env policy uncertainty
     parser.add_argument("--tau", default=0.005, type=float)                     # Target network update rate
     parser.add_argument("--policy_noise", default=0.2, type=float)              # Noise added to target policy during critic update
     parser.add_argument("--noise_clip", default=0.5, type=float)                # Range to clip target policy noise
@@ -130,7 +131,7 @@ if __name__ == "__main__":
     parser.add_argument("--load_model", default="")                 # Model load file name, "" doesn't load, "default" uses file_name
     args = parser.parse_args()
     
-    env = gym.make(args.env)
+    env = gym.make(args.env,policy_uncertainty=args.policy_uncertainty)
     env.time_step_punish = args.time_step_punish
     print(env.observation_space,env.action_space)
     print("made Env")
@@ -159,7 +160,7 @@ if __name__ == "__main__":
         #policy.critic_target.eval()
     if args.load_model != "":
         policy_file = file_name if args.load_model == "default" else args.load_model
-        policy.load(f"./models/{policy_file}")
+        policy.load(policy_file)
 
     #for param in policy.actor.parameters():
     #    print(torch.abs(param).mean())

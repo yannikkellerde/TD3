@@ -1,7 +1,9 @@
-# models/
+models/
 results/
 learning_curves/
 .vscode/
 __pycache__/
 imgui.ini
 replay_buffers*
+parameters/
+replay_buffers/

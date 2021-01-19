@@ -11,8 +11,6 @@ import json
 from tqdm import tqdm,trange
 
 import pickle
-from my_replay_buffer import ReplayBuffer
-from my_TD3 import TD3
 import OurDDPG
 import DDPG
 from rtpt.rtpt import RTPT
@@ -49,7 +47,8 @@ def update_temperature(env,timestep,start_increase,start_temperature):
     env.temperature = min(1,max(0,(timestep-start_increase)/time_full_temp*(1-start_temperature)+start_temperature))
 
 """
-python3.7 main.py --seed 99 --env water_pouring:Pouring-mdp-full-v0 --start_policy 300000 --start_training 600000 --max_timesteps 1500000 --policy_uncertainty 0.3 --expl_noise 0.3 --time_step_punish 1 --load_model models/full_base/ --save_replay_buffer --folder_name models/full-tsp-1-0 --experiment_name full-tsp_1-0
+python3.7 main.py --seed 99 --discount 0.999 --env water_pouring:Pouring-mdp-full-v0 --start_policy 300000 --start_training 600000 --max_timesteps 1500000 --policy_uncertainty 0.3 --expl_noise 0.3 --time_step_punish 1 --load_model models/full_base/ --save_replay_buffer --folder_name models/full-tsp-1-0 --experiment_name full-tsp_1-0
+nvidia-docker run -e NVIDIA_VISIBLE_DEVICES=15 --cpus 8 --memory 120000m -ti --name full-tsp-0-3 water_pouring bash
 """
 
 if __name__ == "__main__":
@@ -57,8 +56,8 @@ if __name__ == "__main__":
     os.makedirs(os.path.join(FILE_PATH,"models"),exist_ok=True)
     os.makedirs(os.path.join(FILE_PATH,"results"),exist_ok=True)
     parser = argparse.ArgumentParser()
-    parser.add_argument("--policy", default="TD3")                  # Policy name (TD3, DDPG or OurDDPG)
-    parser.add_argument("--env", default="water_pouring:Pouring-mdp-v0")          # OpenAI gym environment name
+    parser.add_argument("--policy", default="TD3_particles")                  # Policy name (TD3, DDPG or OurDDPG)
+    parser.add_argument("--env", default="water_pouring:Pouring-mdp-full-v0")          # OpenAI gym environment name
     parser.add_argument("--seed", default=1, type=int)              # Sets Gym, PyTorch and Numpy seeds
     parser.add_argument("--start_training", default=2e5, type=int) # Time steps before starting training
     parser.add_argument("--start_policy", default=2e5, type=int) # Time steps initial random policy is used
@@ -72,7 +71,8 @@ if __name__ == "__main__":
     parser.add_argument("--policy_noise", default=0.2, type=float)              # Noise added to target policy during critic update
     parser.add_argument("--noise_clip", default=0.5, type=float)                # Range to clip target policy noise
     parser.add_argument("--start_temperature", default=1, type=float)
-    parser.add_argument("--time_step_punish", default=0.1, type=float)
+    #parser.add_argument("--time_step_punish", default=0.1, type=float)
+    parser.add_argument("--replay_buffer_size", default=1e6, type=int)
     parser.add_argument("--policy_freq", default=2, type=int)       # Frequency of delayed policy updates
     parser.add_argument("--save_model", action="store_true")        # Save model and optimizer parameters
     parser.add_argument("--load_model", default="")                 # Model load file name, "" doesn't load, "default" uses folder_name
@@ -109,7 +109,7 @@ if __name__ == "__main__":
 
     
     env = gym.make(args.env,policy_uncertainty=args.policy_uncertainty)
-    env.time_step_punish = args.time_step_punish
+    #env.time_step_punish = args.time_step_punish
     env.temperature = args.start_temperature
     print("made Env")
 
@@ -126,19 +126,17 @@ if __name__ == "__main__":
         "action_space": env.action_space,
         "discount": args.discount,
         "tau": args.tau,
+        "max_action":max_action
     }
 
     # Initialize policy
-    if args.policy == "TD3":
-        # Target policy smoothing is scaled wrt the action scale
-        kwargs["policy_noise"] = args.policy_noise * max_action
-        kwargs["noise_clip"] = args.noise_clip * max_action
-        kwargs["policy_freq"] = args.policy_freq
-        policy = TD3(**kwargs)
-    elif args.policy == "OurDDPG":
-        policy = OurDDPG.DDPG(**kwargs)
-    elif args.policy == "DDPG":
-        policy = DDPG.DDPG(**kwargs)
+    if args.policy == "TD3_featured":
+        from TD3_featured import TD3
+        from my_replay_buffer import ReplayBuffer_featured as ReplayBuffer
+    elif args.policy == "TD3_particles":
+        from TD3_particles import TD3
+        from my_replay_buffer import ReplayBuffer_particles as ReplayBuffer
+    policy = TD3(**kwargs)
 
     if args.load_model != "":
         policy_folder = folder_name if args.load_model == "default" else args.load_model
@@ -147,9 +145,9 @@ if __name__ == "__main__":
     if args.load_replay_buffer:
         args.start_timesteps=0
         args.start_training = 0
-        replay_buffer = ReplayBuffer(env.observation_space, env.action_space,load_folder=REPLAY_BUFFER_PATH)
+        replay_buffer = ReplayBuffer(env.observation_space, env.action_space,load_folder=REPLAY_BUFFER_PATH,max_size=args.replay_buffer_size)
     else:
-        replay_buffer = ReplayBuffer(env.observation_space, env.action_space)
+        replay_buffer = ReplayBuffer(env.observation_space, env.action_space,max_size=args.replay_buffer_size)
     
     # Evaluate untrained policy
     evaluations = [eval_policy(policy, env, args.seed,render=args.render)]

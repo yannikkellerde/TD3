@@ -6,6 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import os
 import time
+from TD3_base import TD3_base
 from torchvision import models
 import gym
 
@@ -18,8 +19,8 @@ class Actor_mdp(nn.Module):
         # State expected to be tuple of 0: Box features, 1: convolutional part
         super(Actor_mdp, self).__init__()
         
-        self.num_features = 64
-        self.num_linear = 128
+        self.num_features = 128
+        self.num_linear = 256
 
         self.conv1 = nn.Conv2d(1,self.num_features*2,kernel_size=(1,obs_space[1].shape[1]),stride=1)
         self.conv2 = nn.Conv1d(self.num_features*2,self.num_features,kernel_size=1,stride=1)
@@ -50,8 +51,8 @@ class Critic_mdp(nn.Module):
     def __init__(self, obs_space, action_space):
         super(Critic_mdp, self).__init__()
 
-        self.num_features = 64
-        self.num_linear = 128
+        self.num_features = 128
+        self.num_linear = 256
 
         # Q1 architecture
         self.q1_conv1 = nn.Conv2d(1,self.num_features*2,kernel_size=(1,obs_space[1].shape[1]),stride=1)
@@ -123,34 +124,16 @@ class Critic_mdp(nn.Module):
         q1 = self.q1_l3(q1)
         return q1
 
-class TD3(object):
-    def __init__(
-        self,
-        obs_space,
-        action_space,
-        discount=0.99,
-        tau=0.005,
-        policy_noise=0.02,
-        noise_clip=0.05,
-        policy_freq=2
-    ):
-
-        self.actor = Actor_mdp(obs_space,action_space).to(device)
+class TD3(TD3_base):
+    def __init__(self,obs_space,action_space,**kwargs):
+        self.actor = Actor_mdp(obs_space, action_space).to(device)
         self.actor_target = copy.deepcopy(self.actor)
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=1e-4)
 
-        self.critic = Critic_mdp(obs_space,action_space).to(device)
+        self.critic = Critic_mdp(obs_space, action_space).to(device)
         self.critic_target = copy.deepcopy(self.critic)
         self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=1e-4)
-
-        self.discount = discount
-        self.tau = tau
-        self.policy_noise = policy_noise
-        self.noise_clip = noise_clip
-        self.policy_freq = policy_freq
-
-        self.total_it = 0
-
+        super(TD3, self).__init__(**kwargs)
 
     def select_action(self, state):
         features = torch.FloatTensor(np.array([state[0]]).reshape(1, -1)).to(device)
@@ -224,24 +207,6 @@ class TD3(object):
 
         for param, target_param in zip(self.actor.parameters(), self.actor_target.parameters()):
             target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
-
-    def save(self, folder):
-        os.makedirs(folder,exist_ok=True)
-        torch.save(self.critic.state_dict(), os.path.join(folder,"critic"))
-        torch.save(self.critic_optimizer.state_dict(), os.path.join(folder,"critic_optimizer"))
-        
-        torch.save(self.actor.state_dict(), os.path.join(folder,"actor"))
-        torch.save(self.actor_optimizer.state_dict(), os.path.join(folder,"actor_optimizer"))
-
-
-    def load(self, folder):
-        self.critic.load_state_dict(torch.load(os.path.join(folder,"critic")))
-        self.critic_optimizer.load_state_dict(torch.load(os.path.join(folder,"critic_optimizer")))
-        self.critic_target = copy.deepcopy(self.critic)
-
-        self.actor.load_state_dict(torch.load(os.path.join(folder,"actor")))
-        self.actor_optimizer.load_state_dict(torch.load(os.path.join(folder,"actor_optimizer")))
-        self.actor_target = copy.deepcopy(self.actor)
 
 if __name__=="__main__":
     env = gym.make("water_pouring:Pouring-mdp-v0")
