@@ -83,6 +83,11 @@ class TD3(TD3_base):
         state = torch.FloatTensor(state.reshape(1, -1)).to(device)
         return self.actor(state).cpu().data.numpy().flatten()
 
+    def eval_q(self,state,action):
+        state = torch.FloatTensor(state.reshape(1, -1)).to(device)
+        action = torch.FloatTensor(action.reshape(1, -1)).to(device)
+        res = [x.cpu().data.numpy().flatten() for x in self.critic(state,action)]
+        return res
 
     def train(self, replay_buffer, batch_size=100):
         self.total_it += 1

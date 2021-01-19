@@ -11,8 +11,6 @@ import json
 from tqdm import tqdm,trange
 
 import pickle
-import OurDDPG
-import DDPG
 from rtpt.rtpt import RTPT
 
 # Runs policy for X episodes and returns average reward
@@ -22,25 +20,29 @@ def eval_policy(policy, eval_env, seed, eval_episodes=10, render=True):
 
     avg_true = 0.
     avg_reward = 0.
+    avg_q = 0.
     print("Evaluating")
     for _ in trange(eval_episodes):
         state, done = eval_env.reset(use_gui=render), False
         while not done:
             action = policy.select_action(state)
+            q = np.mean(policy.eval_q(state,action))
             state, reward, done, info = eval_env.step(action)
             if render:
                 eval_env.render()
             avg_true += info["true_reward"]
             avg_reward += reward
+            avg_q += q
 
     avg_reward /= eval_episodes
     avg_true /= eval_episodes
+    avg_q /= eval_episodes
 
     print("---------------------------------------")
-    print(f"Evaluation over {eval_episodes} episodes: {avg_reward:.3f} avg true reward: {avg_true:.3f}")
+    print(f"Evaluation over {eval_episodes} episodes: {avg_reward:.3f} avg true reward: {avg_true:.3f} avg q value {avg_q}")
     print("---------------------------------------")
     eval_env.reset(use_gui=False)
-    return avg_true
+    return avg_q,avg_true
 
 def update_temperature(env,timestep,start_increase,start_temperature):
     time_full_temp = 2e5
@@ -198,7 +200,7 @@ if __name__ == "__main__":
             policy.train(replay_buffer, args.batch_size)
             #batch = replay_buffer.sample(256)
             #policy._actor_learn(batch[0],batch[1])
-        rtpt.step(subtitle=f"reward={evaluations[-1]:2.2f}")
+        rtpt.step(subtitle=f"reward={evaluations[-1][1]:2.2f}")
         if done: 
             # +1 to account for 0 indexing. +0 on ep_timesteps since it will increment +1 even if done=True
             print(f"episode time {time.perf_counter()-start}")
@@ -216,7 +218,7 @@ if __name__ == "__main__":
             if episode_num % args.eval_freq == 0 and (episode_num==args.eval_freq or t>args.start_training):
                 evaluations.append(eval_policy(policy, env, args.seed,render=args.render))
                 np.save(f"./results/{os.path.basename(folder_name)}.npy", evaluations)
-                if args.save_model: policy.save(folder_name+f"_ep-{episode_num}_ev-{evaluations[-1]}")
+                if args.save_model: policy.save(folder_name+f"_ep-{episode_num}_ev-{int(evaluations[-1][1])}-q-{int(evaluations[-1][0])}")
         # Evaluate episode
     replay_buffer.save(REPLAY_BUFFER_PATH+"_"+str(time.time()))
     policy.save(folder_name+"_final")
