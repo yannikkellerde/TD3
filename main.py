@@ -49,8 +49,7 @@ def update_temperature(env,timestep,start_increase,start_temperature):
     env.temperature = min(1,max(0,(timestep-start_increase)/time_full_temp*(1-start_temperature)+start_temperature))
 
 """
-python3.7 main.py --seed 99 --discount 0.999 --env water_pouring:Pouring-mdp-full-v0 --start_policy 300000 --start_training 600000 --max_timesteps 1500000 --policy_uncertainty 0.3 --expl_noise 0.3 --time_step_punish 1 --load_model models/full_base/ --save_replay_buffer --folder_name models/full-tsp-1-0 --experiment_name full-tsp_1-0
-nvidia-docker run -e NVIDIA_VISIBLE_DEVICES=15 --cpus 8 --memory 120000m -ti --name full-tsp-0-3 water_pouring bash
+python3.7 main.py --policy TD3_featured --env water_pouring:Pouring-featured-v0 --seed 90 --start_training 500000 --start_policy 500000 --max_timesteps 1500000 --expl_noise 0.2 --save_replay_buffer --folder_name pouring_featured --experiment_name pouring-featured
 """
 
 if __name__ == "__main__":
@@ -147,9 +146,9 @@ if __name__ == "__main__":
     if args.load_replay_buffer:
         args.start_timesteps=0
         args.start_training = 0
-        replay_buffer = ReplayBuffer(env.observation_space, env.action_space,load_folder=REPLAY_BUFFER_PATH,max_size=args.replay_buffer_size)
+        replay_buffer = ReplayBuffer(env.observation_space, env.action_space,load_folder=REPLAY_BUFFER_PATH,max_size=int(args.replay_buffer_size))
     else:
-        replay_buffer = ReplayBuffer(env.observation_space, env.action_space,max_size=args.replay_buffer_size)
+        replay_buffer = ReplayBuffer(env.observation_space, env.action_space,max_size=int(args.replay_buffer_size))
     
     # Evaluate untrained policy
     evaluations = [eval_policy(policy, env, args.seed,render=args.render)]
