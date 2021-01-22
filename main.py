@@ -82,7 +82,7 @@ if __name__ == "__main__":
     parser.add_argument("--render", action="store_true")
     parser.add_argument("--done_swap", action="store_true")         # Only store done=True if not done because of time
     parser.add_argument("--save_replay_buffer", action="store_true")
-    parser.add_argument("--load_replay_buffer",action="store_true")
+    parser.add_argument("--load_replay_buffer",default="",type=str)
     parser.add_argument("--folder_name", type=str, default="")
     parser.add_argument("--experiment_name",type=str, default="WaterPouring")
     args = parser.parse_args()
@@ -146,10 +146,10 @@ if __name__ == "__main__":
         policy_folder = folder_name if args.load_model == "default" else args.load_model
         policy.load(policy_folder)
 
-    if args.load_replay_buffer:
+    if args.load_replay_buffer!="":
         args.start_timesteps=0
         args.start_training = 0
-        replay_buffer = ReplayBuffer(env.observation_space, env.action_space,load_folder=REPLAY_BUFFER_PATH,max_size=int(args.replay_buffer_size))
+        replay_buffer = ReplayBuffer(env.observation_space, env.action_space,load_folder=args.load_replay_buffer,max_size=int(args.replay_buffer_size))
     else:
         replay_buffer = ReplayBuffer(env.observation_space, env.action_space,max_size=int(args.replay_buffer_size))
     
