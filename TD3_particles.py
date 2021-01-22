@@ -125,14 +125,14 @@ class Critic_mdp(nn.Module):
         return q1
 
 class TD3(TD3_base):
-    def __init__(self,obs_space,action_space,**kwargs):
+    def __init__(self,obs_space,action_space,lr=1e-4,**kwargs):
         self.actor = Actor_mdp(obs_space, action_space).to(device)
         self.actor_target = copy.deepcopy(self.actor)
-        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=1e-4)
+        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=lr)
 
         self.critic = Critic_mdp(obs_space, action_space).to(device)
         self.critic_target = copy.deepcopy(self.critic)
-        self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=1e-4)
+        self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=lr)
         super(TD3, self).__init__(**kwargs)
 
     def select_action(self, state):

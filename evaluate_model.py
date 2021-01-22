@@ -9,9 +9,6 @@ import time
 import matplotlib.pyplot as plt
 from tqdm import tqdm,trange
 
-from my_replay_buffer import ReplayBuffer
-from my_TD3 import TD3
-
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
@@ -22,12 +19,14 @@ def convert_state_to_torch(state):
 
 def evalstuff(state,action,td3):
     features,particles = convert_state_to_torch(state)
+    features[-1] = 0
     #td3.actor.eval()
     #td3.critic.eval()
     #print("likestuff",td3.actor(features,particles),td3.critic.Q1(features,particles, td3.actor(features,particles)))
-    print("action",action)
+    #print("action",action)
     q_val = policy.eval_q(state,action)
-    print("chosen",q_val)
+    #print(state[0],action,q_val)
+    #print("chosen",q_val)
     #print("zero",policy.eval_q(state,[0]))
     #print("special",policy.eval_q(state,[1]))
     #print("one",policy.eval_q(state,[1,1,1]))
@@ -71,10 +70,11 @@ def plot_q_compare(rew_lists,q_lists,discount):
     plt.show()
         
 
-def eval_policy(policy, eval_env, seed, eval_episodes=1):
+def eval_policy(policy, eval_env, seed, eval_episodes=10):
     eval_env.seed(seed + 100)
 
     all_q_val_lists = []
+    b_list = []
     all_reward_lists = []
     print("Evaluating")
     for _ in trange(eval_episodes):
@@ -102,17 +102,20 @@ def eval_policy(policy, eval_env, seed, eval_episodes=1):
             reward_list.append(reward)
         all_q_val_lists.append(q_val_list)
         all_reward_lists.append(reward_list)
+        b_list.append(b)
+    print("Q",all_q_val_lists[0][0])
     avg_reward = np.mean([np.sum(x) for x in all_reward_lists])
     plot_q_compare(all_reward_lists,all_q_val_lists,args.discount)
     print("---------------------------------------")
     print(f"Evaluation over {eval_episodes} episodes: {avg_reward:.3f}")
+    print(f"Avg episode length {np.mean(b_list)}")
     print("---------------------------------------")
     eval_env.reset(use_gui=False)
     return avg_reward
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--policy", default="TD3")                  # Policy name (TD3, DDPG or OurDDPG)
+    parser.add_argument("--policy", default="TD3_particles")                  # Policy name (TD3, DDPG or OurDDPG)
     parser.add_argument("--env", default="water_pouring:Pouring-mdp-full-v0")          # OpenAI gym environment name
     parser.add_argument("--seed", default=0, type=int)              # Sets Gym, PyTorch and Numpy seeds
     parser.add_argument("--start_timesteps", default=5e4, type=int) # Time steps initial random policy is used
@@ -126,13 +129,13 @@ if __name__ == "__main__":
     parser.add_argument("--policy_noise", default=0.2, type=float)              # Noise added to target policy during critic update
     parser.add_argument("--noise_clip", default=0.5, type=float)                # Range to clip target policy noise
     parser.add_argument("--policy_freq", default=2, type=int)       # Frequency of delayed policy updates
-    parser.add_argument("--time_step_punish", default=0.1, type=float)
+    #parser.add_argument("--time_step_punish", default=0.1, type=float)
     parser.add_argument("--save_model", action="store_true")        # Save model and optimizer parameters
     parser.add_argument("--load_model", default="")                 # Model load file name, "" doesn't load, "default" uses file_name
     args = parser.parse_args()
     
-    env = gym.make(args.env,policy_uncertainty=args.policy_uncertainty)
-    env.time_step_punish = args.time_step_punish
+    env = gym.make(args.env,policy_uncertainty=args.policy_uncertainty,fixed_tsp=True)
+    env.time_step_punish = 0.1
     print(env.observation_space,env.action_space)
     print("made Env")
 
@@ -149,15 +152,15 @@ if __name__ == "__main__":
         "tau": args.tau,
     }
 
-    # Initialize policy
-    if args.policy == "TD3":
-        # Target policy smoothing is scaled wrt the action scale
-        kwargs["policy_noise"] = args.policy_noise * max_action
-        kwargs["noise_clip"] = args.noise_clip * max_action
-        kwargs["policy_freq"] = args.policy_freq
-        policy = TD3(**kwargs)
-        #policy.critic.eval()
-        #policy.critic_target.eval()
+    if args.policy == "TD3_featured":
+        from TD3_featured import TD3
+        from my_replay_buffer import ReplayBuffer_featured as ReplayBuffer
+    elif args.policy == "TD3_particles":
+        from TD3_particles import TD3
+        from my_replay_buffer import ReplayBuffer_particles as ReplayBuffer
+    policy = TD3(**kwargs)
+
+
     if args.load_model != "":
         policy_file = file_name if args.load_model == "default" else args.load_model
         policy.load(policy_file)

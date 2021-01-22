@@ -9,6 +9,7 @@ import os
 import time
 import json
 from tqdm import tqdm,trange
+from util.noise import OrnsteinUhlenbeckActionNoise
 
 import pickle
 from rtpt.rtpt import RTPT
@@ -64,7 +65,7 @@ if __name__ == "__main__":
     parser.add_argument("--start_policy", default=2e5, type=int) # Time steps initial random policy is used
     parser.add_argument("--eval_freq", default=1e2, type=int)       # How often (time steps) we evaluate
     parser.add_argument("--max_timesteps", default=4e5, type=int)   # Max time steps to run environment
-    parser.add_argument("--expl_noise", default=0.3, type=float)                # Std of Gaussian exploration noise
+    parser.add_argument("--expl_noise", default=0.12, type=float)                # Std of Gaussian exploration noise
     parser.add_argument("--policy_uncertainty",default=0.3, type=float)    # Std of env policy uncertainty
     parser.add_argument("--batch_size", default=256, type=int)      # Batch size for both actor and critic
     parser.add_argument("--discount", default=0.99, type=float)                 # Discount factor
@@ -72,6 +73,7 @@ if __name__ == "__main__":
     parser.add_argument("--policy_noise", default=0.2, type=float)              # Noise added to target policy during critic update
     parser.add_argument("--noise_clip", default=0.5, type=float)                # Range to clip target policy noise
     parser.add_argument("--start_temperature", default=1, type=float)
+    parser.add_argument("--lr",default=1e-4)
     #parser.add_argument("--time_step_punish", default=0.1, type=float)
     parser.add_argument("--replay_buffer_size", default=1e6, type=int)
     parser.add_argument("--policy_freq", default=2, type=int)       # Frequency of delayed policy updates
@@ -166,6 +168,8 @@ if __name__ == "__main__":
 
     start = time.perf_counter()
 
+    uhlbeck = OrnsteinUhlenbeckActionNoise(env.action_space.shape[0],sigma=args.expl_noise)
+
     for t in range(int(args.max_timesteps)):
         episode_timesteps += 1
 
@@ -177,7 +181,7 @@ if __name__ == "__main__":
                 replay_buffer.save(REPLAY_BUFFER_PATH)
             action = (
                 policy.select_action(state)
-                + np.random.normal(0, max_action * args.expl_noise, size=env.action_space.shape[0])
+                + uhlbeck.sample()
             ).clip(-max_action, max_action)
         # Perform action
         next_state, reward, done, info = env.step(action)
@@ -209,6 +213,7 @@ if __name__ == "__main__":
             # Reset environment
             env.seed(args.seed)
             state, done = env.reset(), False
+            uhlbeck.reset()
             episode_reward = 0
             episode_true_reward = 0
             episode_timesteps = 0
