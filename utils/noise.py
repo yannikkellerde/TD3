@@ -1,10 +1,10 @@
-#import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 import numpy as np
 
 class OrnsteinUhlenbeckActionNoise:
     # Source for this class: https://github.com/navneet-nmk/pytorch-rl/blob/8329234822dcb977931c72db691eabf5b635788c/Utils/random_process.py#L63
 
-    def __init__(self, action_dim, mu = 0, theta = 0.1, sigma = 0.1):
+    def __init__(self, action_dim, mu = 0, theta = 0.1, sigma = 0.2):
         self.action_dim = action_dim
         self.mu = mu
         self.theta = theta
@@ -20,7 +20,7 @@ class OrnsteinUhlenbeckActionNoise:
         self.X = self.X + dx
         return self.X
 
-"""
+
 if __name__ == '__main__':
     n = OrnsteinUhlenbeckActionNoise(1)
     b = []
@@ -28,4 +28,3 @@ if __name__ == '__main__':
         b.append(n.sample())
     plt.plot(b)
     plt.show()
-"""

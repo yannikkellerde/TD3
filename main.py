@@ -16,15 +16,18 @@ from rtpt.rtpt import RTPT
 
 # Runs policy for X episodes and returns average reward
 # A fixed seed is used for the eval environment
-def eval_policy(policy, eval_env, seed, eval_episodes=10, render=True):
+def eval_policy(policy, eval_env, seed, eval_episodes=11, render=True):
     eval_env.seed(seed + 100)
+    eval_env.fixed_tsp = True
 
     avg_true = 0.
     avg_reward = 0.
     avg_q = 0.
     print("Evaluating")
-    for _ in trange(eval_episodes):
+    for i in trange(eval_episodes):
+        eval_env.time_step_punish = 0.1 * i
         state, done = eval_env.reset(use_gui=render), False
+        q_list = []
         while not done:
             action = policy.select_action(state)
             q = np.mean(policy.eval_q(state,action))
@@ -33,7 +36,8 @@ def eval_policy(policy, eval_env, seed, eval_episodes=10, render=True):
                 eval_env.render()
             avg_true += info["true_reward"]
             avg_reward += reward
-            avg_q += q
+            q_list.append(q)
+        avg_q += np.mean(q_list)
 
     avg_reward /= eval_episodes
     avg_true /= eval_episodes
@@ -42,6 +46,7 @@ def eval_policy(policy, eval_env, seed, eval_episodes=10, render=True):
     print("---------------------------------------")
     print(f"Evaluation over {eval_episodes} episodes: {avg_reward:.3f} avg true reward: {avg_true:.3f} avg q value {avg_q}")
     print("---------------------------------------")
+    eval_env.fixed_tsp = False
     eval_env.reset(use_gui=False)
     return avg_q,avg_true
 
@@ -50,7 +55,7 @@ def update_temperature(env,timestep,start_increase,start_temperature):
     env.temperature = min(1,max(0,(timestep-start_increase)/time_full_temp*(1-start_temperature)+start_temperature))
 
 """
-python3.7 main.py --policy TD3_featured --env water_pouring:Pouring-featured-v0 --seed 90 --start_training 500000 --start_policy 500000 --max_timesteps 1500000 --expl_noise 0.2 --save_replay_buffer --folder_name pouring_featured --experiment_name pouring-featured
+python3.7 main.py --policy TD3_particles --env water_pouring:Pouring-mdp-full-v0 --seed 91 --start_training 0 --start_policy 0 --max_timesteps 1500000 --expl_noise 0.12 --load_replay_buffer replay_buffers_1611221700.6150525/ --load_model models/pouring_particle_ep-23600_ev-169-q-6121 --folder_name pouring_finetune --experiment_name pouring-finetune --policy_freq 3 --lr 0.00005 --tau 0.003
 """
 
 if __name__ == "__main__":
