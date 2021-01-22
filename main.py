@@ -9,7 +9,7 @@ import os
 import time
 import json
 from tqdm import tqdm,trange
-from util.noise import OrnsteinUhlenbeckActionNoise
+from utils.noise import OrnsteinUhlenbeckActionNoise
 
 import pickle
 from rtpt.rtpt import RTPT
