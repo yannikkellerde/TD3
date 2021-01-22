@@ -73,7 +73,7 @@ if __name__ == "__main__":
     parser.add_argument("--policy_noise", default=0.2, type=float)              # Noise added to target policy during critic update
     parser.add_argument("--noise_clip", default=0.5, type=float)                # Range to clip target policy noise
     parser.add_argument("--start_temperature", default=1, type=float)
-    parser.add_argument("--lr",default=1e-4)
+    parser.add_argument("--lr",default=1e-4,type=float)
     #parser.add_argument("--time_step_punish", default=0.1, type=float)
     parser.add_argument("--replay_buffer_size", default=1e6, type=int)
     parser.add_argument("--policy_freq", default=2, type=int)       # Frequency of delayed policy updates
