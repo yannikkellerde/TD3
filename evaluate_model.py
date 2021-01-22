@@ -150,6 +150,7 @@ if __name__ == "__main__":
         "action_space": env.action_space,
         "discount": args.discount,
         "tau": args.tau,
+        "policy_freq": int(args.policy_freq)
     }
 
     if args.policy == "TD3_featured":

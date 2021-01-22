@@ -1,4 +1,4 @@
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 import numpy as np
 
 class OrnsteinUhlenbeckActionNoise:
@@ -20,7 +20,7 @@ class OrnsteinUhlenbeckActionNoise:
         self.X = self.X + dx
         return self.X
 
-
+"""
 if __name__ == '__main__':
     n = OrnsteinUhlenbeckActionNoise(1)
     b = []
@@ -28,3 +28,4 @@ if __name__ == '__main__':
         b.append(n.sample())
     plt.plot(b)
     plt.show()
+"""
