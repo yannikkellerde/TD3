@@ -130,7 +130,8 @@ if __name__ == "__main__":
         "discount": args.discount,
         "tau": args.tau,
         "max_action":max_action,
-        "lr":args.lr
+        "lr":args.lr,
+        "policy_freq": int(args.policy_freq)
     }
 
     # Initialize policy
