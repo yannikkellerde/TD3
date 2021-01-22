@@ -129,7 +129,8 @@ if __name__ == "__main__":
         "action_space": env.action_space,
         "discount": args.discount,
         "tau": args.tau,
-        "max_action":max_action
+        "max_action":max_action,
+        "lr":args.lr
     }
 
     # Initialize policy
