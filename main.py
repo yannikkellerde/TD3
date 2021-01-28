@@ -19,15 +19,17 @@ from rtpt.rtpt import RTPT
 def eval_policy(policy, eval_env, seed, eval_episodes=11, render=True):
     eval_env.seed(seed + 100)
     eval_env.fixed_tsp = True
+    eval_env.fixed_spill = True
 
     avg_true = 0.
     avg_reward = 0.
     avg_q = 0.
     print("Evaluating")
     for i in trange(eval_episodes):
-        eval_env.time_step_punish = 0.1 * i
+        eval_env.time_step_punish = 1/(eval_episodes-1) * i
         state, done = eval_env.reset(use_gui=render), False
         q_list = []
+        t = 0
         while not done:
             action = policy.select_action(state)
             q = np.mean(policy.eval_q(state,action))
@@ -37,6 +39,8 @@ def eval_policy(policy, eval_env, seed, eval_episodes=11, render=True):
             avg_true += info["true_reward"]
             avg_reward += reward
             q_list.append(q)
+            t+=1
+        print(f"Episode length: {t}")
         avg_q += np.mean(q_list)
 
     avg_reward /= eval_episodes
@@ -47,6 +51,7 @@ def eval_policy(policy, eval_env, seed, eval_episodes=11, render=True):
     print(f"Evaluation over {eval_episodes} episodes: {avg_reward:.3f} avg true reward: {avg_true:.3f} avg q value {avg_q}")
     print("---------------------------------------")
     eval_env.fixed_tsp = False
+    eval_env.fixed_spill = False
     eval_env.reset(use_gui=False)
     return avg_q,avg_true
 
@@ -55,7 +60,7 @@ def update_temperature(env,timestep,start_increase,start_temperature):
     env.temperature = min(1,max(0,(timestep-start_increase)/time_full_temp*(1-start_temperature)+start_temperature))
 
 """
-python3.7 main.py --policy TD3_particles --env water_pouring:Pouring-mdp-full-v0 --seed 91 --start_training 0 --start_policy 0 --max_timesteps 1500000 --expl_noise 0.12 --load_replay_buffer replay_buffers_1611221700.6150525/ --load_model models/pouring_particle_ep-23600_ev-169-q-6121 --folder_name pouring_finetune --experiment_name pouring-finetune --policy_freq 3 --lr 0.00005 --tau 0.003
+python3.7 main.py --seed 66 --start_training 0 --start_policy 0 --max_timesteps 1000000 --expl_noise 0.2 --folder_name models/pouring_2 --experiment_name pouring-corr-noise --load_replay_buffer replay_buffers_1611535680.8310199/ --load_model models/pouring_f
 """
 
 if __name__ == "__main__":

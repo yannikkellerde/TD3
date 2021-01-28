@@ -10,7 +10,8 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm,trange
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+MODEL_NAME = "older_179"
+os.makedirs(os.path.join("plots",MODEL_NAME),exist_ok=True)
 
 def convert_state_to_torch(state):
     features = torch.FloatTensor(np.array([state[0]]).reshape(1, -1)).to(device)
@@ -67,49 +68,115 @@ def plot_q_compare(rew_lists,q_lists,discount):
     plt.xlabel("time step")
     plt.ylabel("Q-value")
     plt.legend()
+    plt.savefig(f"plots/{MODEL_NAME}/q_compare.svg")
     plt.show()
-        
+    plt.cla()
 
-def eval_policy(policy, eval_env, seed, eval_episodes=10):
+def running_mean(x, N):
+    cumsum = np.cumsum(np.insert(x, 0, 0)) 
+    return (cumsum[N:] - cumsum[:-N]) / float(N)
+
+def plot_mean(x_ax,vals,xlabel,ylabel,legend_val,title,store_name,show=False,N=5):
+    rm = running_mean(vals,N)
+    plt.plot(x_ax,vals,label=legend_val)
+    plt.plot(x_ax[:len(rm)],rm,label="running mean")
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.title(title)
+    plt.legend()
+    plt.savefig(f"plots/{MODEL_NAME}/{store_name}.svg")
+    if show:
+        plt.show()
+    plt.cla()
+
+def plot_angles(tsp_list,max_angle_list):
+    plot_mean(tsp_list,max_angle_list,"Time step punish","Max angle","max angle","Max angle of inclination vs time step punish","angles")
+
+def plot_rewards(tsp_list,all_reward_lists):
+    reward_sum = [np.sum(x) for x in all_reward_lists]
+    plot_mean(tsp_list,reward_sum,"Time step punish","Return","total return","total return","return")
+
+def plot_action(all_action_list,show=False):
+    max_len = max(len(x) for x in all_action_list)
+    avg_actions = []
+    for i in range(max_len):
+        pot = []
+        for acs in all_action_list:
+            if len(acs)>i:
+                pot.append(acs[i])
+        avg_actions.append(np.mean(pot))
+    plt.plot(avg_actions)
+    plt.xlabel("Step")
+    plt.ylabel("Avg rotation action")
+    plt.title("avg rotation action per step")
+    plt.savefig(f"plots/{MODEL_NAME}/action_rotation.svg")
+    if show:
+        plt.show()
+    plt.cla()
+
+def plot_episode_length(tsp_list,episode_lengths):
+    plot_mean(tsp_list,episode_lengths,"Time step punish","Episode length","max episode length","Episode lengths","episode_length")
+
+def plot_spilled(tsp_list,spill_list):
+    plot_mean(tsp_list,spill_list,"Time step punish","Spilled","num particles spilled","Particles Spilled","spilled")
+
+def plot_fill_state(tsp_list,fill_state):
+    plot_mean(tsp_list,fill_state,"Time step punish","particles in glass","num particles in glass","Final fill state","fill_state")
+
+def eval_policy(policy, eval_env, seed, eval_episodes=50):
     eval_env.seed(seed + 100)
-
+    eval_env.fixed_tsp = True
     all_q_val_lists = []
     b_list = []
     all_reward_lists = []
+    max_angle_list = []
+    all_action_list = []
+    tsp_list = []
+    spill_list = []
+    glass_list = []
     print("Evaluating")
-    for _ in trange(eval_episodes):
-        state, done = eval_env.reset(use_gui=True), False
+    for i in trange(eval_episodes):
+        tsp = 1/(eval_episodes-1) * i
+        tsp_list.append(tsp)
+        eval_env.time_step_punish = tsp
+        state, done = eval_env.reset(use_gui=False), False
         b = 0
         reward_list = []
         q_val_list = []
+        action_list = []
+        max_angle = 0
         while not done:
             b+=1
-            #print("obs",state[0])
             action = policy.select_action(state)
-            #evalstuff(state,action,policy)
-            #exit()
-            #action = policy.select_action(state)
+            action_list.append(action)
+            max_angle = max(state[0][0],max_angle)
             q_val_list.append(evalstuff(state,action,policy))
-            #if b==5:
-            #    while 1:
-            #        action = policy.select_action(state)
-            #        for i in range(10):
-            #            train(state,policy)
-            #        evalstuff(state,action,policy)
-            #action = [-1,-1,-1]
             state, reward, done, _ = eval_env.step(action)
-            eval_env.render()
             reward_list.append(reward)
         all_q_val_lists.append(q_val_list)
         all_reward_lists.append(reward_list)
+        all_action_list.append(action_list)
+        spill_list.append(eval_env.particle_locations["spilled"])
+        glass_list.append(eval_env.particle_locations["glas"])
+        max_angle_list.append(max_angle)
         b_list.append(b)
-    print("Q",all_q_val_lists[0][0])
+    
     avg_reward = np.mean([np.sum(x) for x in all_reward_lists])
+
+    plot_episode_length(tsp_list,b_list)
+    plot_angles(tsp_list,max_angle_list)
+    plot_action(all_action_list)
+    plot_rewards(tsp_list,all_reward_lists)
+    plot_spilled(tsp_list,spill_list)
+    plot_fill_state(tsp_list,glass_list)
     plot_q_compare(all_reward_lists,all_q_val_lists,args.discount)
+
+
     print("---------------------------------------")
     print(f"Evaluation over {eval_episodes} episodes: {avg_reward:.3f}")
     print(f"Avg episode length {np.mean(b_list)}")
     print("---------------------------------------")
+    eval_env.fixed_tsp = False
     eval_env.reset(use_gui=False)
     return avg_reward
 
@@ -134,8 +201,7 @@ if __name__ == "__main__":
     parser.add_argument("--load_model", default="")                 # Model load file name, "" doesn't load, "default" uses file_name
     args = parser.parse_args()
     
-    env = gym.make(args.env,policy_uncertainty=args.policy_uncertainty,fixed_tsp=True)
-    env.time_step_punish = 0.1
+    env = gym.make(args.env,policy_uncertainty=args.policy_uncertainty)
     print(env.observation_space,env.action_space)
     print("made Env")
 

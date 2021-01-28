@@ -26,9 +26,7 @@ class Actor_mdp(nn.Module):
         self.conv2 = nn.Conv1d(self.num_features*2,self.num_features,kernel_size=1,stride=1)
         
         self.avg_pool = nn.AvgPool2d(kernel_size = (1,obs_space[1].shape[0]))
-        #self.b1 = nn.BatchNorm1d(self.num_features+obs_space[0].shape[0]) This somehow does not work
         self.l1 = nn.Linear(self.num_features+obs_space[0].shape[0],self.num_linear)
-        #self.b2 = nn.BatchNorm1d(self.num_features)
         self.l2 = nn.Linear(self.num_linear,self.num_linear)
         self.l3 = nn.Linear(self.num_linear,action_space.shape[0])
         
