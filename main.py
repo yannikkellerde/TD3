@@ -16,7 +16,7 @@ from rtpt.rtpt import RTPT
 
 # Runs policy for X episodes and returns average reward
 # A fixed seed is used for the eval environment
-def eval_policy(policy, eval_env, seed, eval_episodes=11, render=True):
+def eval_policy(policy, eval_env, seed, eval_episodes=2, render=True):
     eval_env.seed(seed + 100)
     eval_env.fixed_tsp = True
     eval_env.fixed_spill = True
@@ -94,6 +94,7 @@ if __name__ == "__main__":
     parser.add_argument("--save_replay_buffer", action="store_true")
     parser.add_argument("--load_replay_buffer",default="",type=str)
     parser.add_argument("--folder_name", type=str, default="")
+    parser.add_argument("--norm",type=str, default="")
     parser.add_argument("--experiment_name",type=str, default="WaterPouring")
     args = parser.parse_args()
     args.save_model = True
@@ -141,7 +142,8 @@ if __name__ == "__main__":
         "tau": args.tau,
         "max_action":max_action,
         "lr":args.lr,
-        "policy_freq": int(args.policy_freq)
+        "policy_freq": int(args.policy_freq),
+        "norm": None if args.norm=="" else args.norm
     }
 
     # Initialize policy
@@ -151,6 +153,7 @@ if __name__ == "__main__":
     elif args.policy == "TD3_particles":
         from TD3_particles import TD3
         from my_replay_buffer import ReplayBuffer_particles as ReplayBuffer
+
     policy = TD3(**kwargs)
 
     if args.load_model != "":

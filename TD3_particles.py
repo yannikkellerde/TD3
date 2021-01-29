@@ -12,12 +12,14 @@ import gym
 
 if not torch.cuda.is_available():
     print("WARNING: NO CUDA")
+else:
+    print(torch.cuda.get_device_name(0))
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-class Actor_mdp(nn.Module):
-    def __init__(self,obs_space,action_space):
+class Actor(nn.Module):
+    def __init__(self,obs_space,action_space,norm=None):
         # State expected to be tuple of 0: Box features, 1: convolutional part
-        super(Actor_mdp, self).__init__()
+        super(Actor, self).__init__()
         
         self.num_features = 128
         self.num_linear = 256
@@ -29,6 +31,17 @@ class Actor_mdp(nn.Module):
         self.l1 = nn.Linear(self.num_features+obs_space[0].shape[0],self.num_linear)
         self.l2 = nn.Linear(self.num_linear,self.num_linear)
         self.l3 = nn.Linear(self.num_linear,action_space.shape[0])
+
+        self.norm = norm
+        if self.norm == "layer":
+            self.ln1 = nn.LayerNorm(self.num_features+obs_space[0].shape[0])
+            self.ln2 = nn.LayerNorm(self.num_linear)
+            self.ln3 = nn.LayerNorm(self.num_linear)
+
+        if self.norm == "weight_normalization":
+            self.l1 = nn.utils.weight_norm(self.l1)
+            self.l2 = nn.utils.weight_norm(self.l2)
+            self.l3 = nn.utils.weight_norm(self.l3)
         
     def forward(self, state_features, state_particles):
         a = torch.unsqueeze(state_particles,1)
@@ -38,98 +51,86 @@ class Actor_mdp(nn.Module):
         a = F.relu(self.avg_pool(a))
         a = torch.squeeze(a,dim=2)
         a = torch.cat([a,state_features],1)
-        #a = self.b1(a)
+        if self.norm == "layer":
+            a = self.ln1(a)
         a = F.relu(self.l1(a))
-        #a = self.b2(a)
+        if self.norm == "layer":
+            a = self.ln2(a)
         a = F.relu(self.l2(a))
+        if self.norm == "layer":
+            a = self.ln3(a)
         a = torch.tanh(self.l3(a))
         return a
 
-class Critic_mdp(nn.Module):
-    def __init__(self, obs_space, action_space):
-        super(Critic_mdp, self).__init__()
+class Q_network(nn.Module):
+    def __init__(self, obs_space, action_space, norm=None):
+        super(Q_network, self).__init__()
 
         self.num_features = 128
         self.num_linear = 256
 
-        # Q1 architecture
-        self.q1_conv1 = nn.Conv2d(1,self.num_features*2,kernel_size=(1,obs_space[1].shape[1]),stride=1)
-        self.q1_conv2 = nn.Conv1d(self.num_features*2,self.num_features,kernel_size=1,stride=1)
+        self.conv1 = nn.Conv2d(1,self.num_features*2,kernel_size=(1,obs_space[1].shape[1]),stride=1)
+        self.conv2 = nn.Conv1d(self.num_features*2,self.num_features,kernel_size=1,stride=1)
 
-        self.q1_avg_pool = nn.AvgPool2d(kernel_size = (1,obs_space[1].shape[0]))
+        self.avg_pool = nn.AvgPool2d(kernel_size = (1,obs_space[1].shape[0]))
         
-        #self.q1_b1 = nn.BatchNorm1d(self.num_features+obs_space[0].shape[0]+action_space.shape[0])
-        self.q1_l1 = nn.Linear(self.num_features+obs_space[0].shape[0]+action_space.shape[0],self.num_linear)
-        self.q1_l2 = nn.Linear(self.num_linear,self.num_linear)
-        #self.q1_b2 = nn.BatchNorm1d(self.num_features) I am too stupid for batch normalization
-        self.q1_l3 = nn.Linear(self.num_linear,1)
+        self.l1 = nn.Linear(self.num_features+obs_space[0].shape[0]+action_space.shape[0],self.num_linear)
+        self.l2 = nn.Linear(self.num_linear,self.num_linear)
+        self.l3 = nn.Linear(self.num_linear,1)
 
-        # Q1 architecture
-        self.q2_conv1 = nn.Conv2d(1,self.num_features*2,kernel_size=(1,obs_space[1].shape[1]),stride=1)
-        self.q2_conv2 = nn.Conv1d(self.num_features*2,self.num_features,kernel_size=1,stride=1)
+        self.norm = norm
+        if self.norm == "layer":
+            self.ln1 = nn.LayerNorm(self.num_features+obs_space[0].shape[0]+action_space.shape[0])
+            self.ln2 = nn.LayerNorm(self.num_linear)
+            self.ln3 = nn.LayerNorm(self.num_linear)
 
-        self.q2_avg_pool = nn.AvgPool2d(kernel_size = (1,obs_space[1].shape[0]))
-        #self.q2_b1 = nn.BatchNorm1d(self.num_features+obs_space[0].shape[0]+action_space.shape[0])
-        self.q2_l1 = nn.Linear(self.num_features+obs_space[0].shape[0]+action_space.shape[0],self.num_linear)
-        self.q2_l2 = nn.Linear(self.num_linear,self.num_linear)
-        #self.q2_b2 = nn.BatchNorm1d(self.num_features)
-        self.q2_l3 = nn.Linear(self.num_linear,1)
-
-
+        if self.norm == "weight_normalization":
+            self.l1 = nn.utils.weight_norm(self.l1)
+            self.l2 = nn.utils.weight_norm(self.l2)
+            self.l3 = nn.utils.weight_norm(self.l3)
 
     def forward(self, state_features, state_particles, action):
-        q1 = torch.unsqueeze(state_particles,1)
-        q1 = F.relu(self.q1_conv1(q1))
-        q1 = torch.squeeze(q1,dim=3)
-        q1 = F.relu(self.q1_conv2(q1))
-        q1 = F.relu(self.q1_avg_pool(q1))
-        q1 = torch.squeeze(q1,dim=2)
-        q1 = torch.cat([q1,state_features,action],1)
-        #q1 = self.q1_b1(q1)
-        q1 = F.relu(self.q1_l1(q1))
-        q1 = F.relu(self.q1_l2(q1))
-        #q1 = self.q1_b2(q1)
-        q1 = self.q1_l3(q1)
+        q = torch.unsqueeze(state_particles,1)
+        q = F.relu(self.conv1(q))
+        q = torch.squeeze(q,dim=3)
+        q = F.relu(self.conv2(q))
+        q = F.relu(self.avg_pool(q))
+        q = torch.squeeze(q,dim=2)
+        q = torch.cat([q,state_features,action],1)
+        if self.norm == "layer":
+            q = self.ln1(q)
+        q = F.relu(self.l1(q))
+        if self.norm == "layer":
+            q = self.ln2(q)
+        q = F.relu(self.l2(q))
+        if self.norm == "layer":
+            q = self.ln3(q)
+        q = self.l3(q)
+        return q
 
-        q2 = torch.unsqueeze(state_particles,1)
-        q2 = F.relu(self.q2_conv1(q2))
-        q2 = torch.squeeze(q2,dim=3)
-        q2 = F.relu(self.q2_conv2(q2))
-        q2 = F.relu(self.q2_avg_pool(q2))
-        q2 = torch.squeeze(q2,dim=2)
-        q2 = torch.cat([q2,state_features,action],1)
-        #q2 = self.q2_b1(q2)
-        q2 = F.relu(self.q2_l1(q2))
-        q2 = F.relu(self.q2_l2(q2))
-        #q2 = self.q2_b2(q2)
-        q2 = self.q2_l3(q2)
+class Critic(nn.Module):
+    def __init__(self, obs_space, action_space, norm=None):
+        super(Critic, self).__init__()
 
-        return q1, q2
+        self.q1 = Q_network(obs_space,action_space,norm)
+        self.q2 = Q_network(obs_space,action_space,norm)
 
+    def forward(self, state_features, state_particles, action):
+        return self.q1(state_features,state_particles,action), self.q2(state_features,state_particles,action)
 
     def Q1(self, state_features, state_particles, action):
-        q1 = torch.unsqueeze(state_particles,1)
-        q1 = F.relu(self.q1_conv1(q1))
-        q1 = torch.squeeze(q1,dim=3)
-        q1 = F.relu(self.q1_conv2(q1))
-        q1 = F.relu(self.q1_avg_pool(q1))
-        q1 = torch.squeeze(q1,dim=2)
-        q1 = torch.cat([q1,state_features,action],1)
-        #q1 = self.q1_b1(q1)
-        q1 = F.relu(self.q1_l1(q1))
-        q1 = F.relu(self.q1_l2(q1))
-        #q1 = self.q1_b2(q1)
-        q1 = self.q1_l3(q1)
-        return q1
+        return self.q1(state_features,state_particles,action)
 
 class TD3(TD3_base):
-    def __init__(self,obs_space,action_space,lr=1e-4,**kwargs):
-        self.actor = Actor_mdp(obs_space, action_space).to(device)
-        self.actor_target = copy.deepcopy(self.actor)
+    def __init__(self,obs_space,action_space,lr=1e-4,norm=None,**kwargs):
+        self.actor = Actor(obs_space, action_space,norm).to(device)
+        self.actor_target = Actor(obs_space, action_space,norm).to(device)
+        self.actor_target.load_state_dict(self.actor.state_dict())
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=lr)
 
-        self.critic = Critic_mdp(obs_space, action_space).to(device)
-        self.critic_target = copy.deepcopy(self.critic)
+        self.critic = Critic(obs_space, action_space, norm).to(device)
+        self.critic_target = Critic(obs_space, action_space, norm).to(device)
+        self.critic_target.load_state_dict(self.critic.state_dict())
         self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=lr)
         super(TD3, self).__init__(**kwargs)
 
@@ -143,9 +144,7 @@ class TD3(TD3_base):
         features = torch.FloatTensor(np.array([state[0]]).reshape(1, -1)).to(device)
         action = torch.FloatTensor(np.array(action).reshape(1, -1)).to(device)
         particles = torch.FloatTensor(state[1].reshape(1,*state[1].shape)).to(device)
-        #self.critic.eval()
         res = [x.cpu().data.numpy().flatten() for x in self.critic(features,particles,action)]
-        #self.critic.train()
         return res
 
 
@@ -192,8 +191,6 @@ class TD3(TD3_base):
         action = self.actor(state_features,state_particles)
         actor_loss = -self.critic.Q1(state_features,state_particles, action).mean()
 
-        #print(action,actor_loss)
-
         # Optimize the actor 
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
@@ -215,8 +212,8 @@ if __name__=="__main__":
         state,reward,done,info = env.step(td3.select_action(state))
     print(time.perf_counter()-start)
     exit()
-    actor = Actor_mdp(env.observation_space,env.action_space).to(device)
-    critic = Critic_mdp(env.observation_space,env.action_space).to(device)
+    actor = Actor(env.observation_space,env.action_space).to(device)
+    critic = Critic(env.observation_space,env.action_space).to(device)
     state,reward,done,info = env.step([-1])
     feat_batch = np.empty((1,1))
     part_batch = np.empty((1,*state[1].shape))
