@@ -16,7 +16,7 @@ from rtpt.rtpt import RTPT
 
 # Runs policy for X episodes and returns average reward
 # A fixed seed is used for the eval environment
-def eval_policy(policy, eval_env, seed, eval_episodes=2, render=True):
+def eval_policy(policy, eval_env, seed, eval_episodes=6, render=True):
     eval_env.seed(seed + 100)
     eval_env.fixed_tsp = True
     eval_env.fixed_spill = True
