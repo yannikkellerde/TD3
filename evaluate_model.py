@@ -123,9 +123,11 @@ def plot_spilled(tsp_list,spill_list):
 def plot_fill_state(tsp_list,fill_state):
     plot_mean(tsp_list,fill_state,"Time step punish","particles in glass","num particles in glass","Final fill state","fill_state")
 
-def eval_policy(policy, eval_env, seed, eval_episodes=50):
+def eval_policy(policy, eval_env, seed, eval_episodes=10, render=False):
     eval_env.seed(seed + 100)
     eval_env.fixed_tsp = True
+    eval_env.fixed_spill = True
+    eval_env.spill_punish = 1
     all_q_val_lists = []
     b_list = []
     all_reward_lists = []
@@ -139,7 +141,7 @@ def eval_policy(policy, eval_env, seed, eval_episodes=50):
         tsp = 1/(eval_episodes-1) * i
         tsp_list.append(tsp)
         eval_env.time_step_punish = tsp
-        state, done = eval_env.reset(use_gui=False), False
+        state, done = eval_env.reset(use_gui=render), False
         b = 0
         reward_list = []
         q_val_list = []
@@ -152,6 +154,8 @@ def eval_policy(policy, eval_env, seed, eval_episodes=50):
             max_angle = max(state[0][0],max_angle)
             q_val_list.append(evalstuff(state,action,policy))
             state, reward, done, _ = eval_env.step(action)
+            if render:
+                eval_env.render()
             reward_list.append(reward)
         all_q_val_lists.append(q_val_list)
         all_reward_lists.append(reward_list)
@@ -162,6 +166,8 @@ def eval_policy(policy, eval_env, seed, eval_episodes=50):
         b_list.append(b)
     
     avg_reward = np.mean([np.sum(x) for x in all_reward_lists])
+    print(avg_reward)
+    exit()
 
     plot_episode_length(tsp_list,b_list)
     plot_angles(tsp_list,max_angle_list)
@@ -199,6 +205,8 @@ if __name__ == "__main__":
     #parser.add_argument("--time_step_punish", default=0.1, type=float)
     parser.add_argument("--save_model", action="store_true")        # Save model and optimizer parameters
     parser.add_argument("--load_model", default="")                 # Model load file name, "" doesn't load, "default" uses file_name
+    parser.add_argument("--norm",type=str, default="")
+    parser.add_argument("--render", action="store_true")
     args = parser.parse_args()
     
     env = gym.make(args.env,policy_uncertainty=args.policy_uncertainty)
@@ -216,7 +224,8 @@ if __name__ == "__main__":
         "action_space": env.action_space,
         "discount": args.discount,
         "tau": args.tau,
-        "policy_freq": int(args.policy_freq)
+        "policy_freq": int(args.policy_freq),
+        "norm": None if args.norm=="" else args.norm
     }
 
     if args.policy == "TD3_featured":
@@ -249,4 +258,4 @@ if __name__ == "__main__":
 
     # Set seeds
     
-    evaluations = eval_policy(policy, env, args.seed)
+    evaluations = eval_policy(policy, env, args.seed, render=args.render)

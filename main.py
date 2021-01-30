@@ -14,12 +14,12 @@ from utils.noise import OrnsteinUhlenbeckActionNoise
 import pickle
 from rtpt.rtpt import RTPT
 
-# Runs policy for X episodes and returns average reward
-# A fixed seed is used for the eval environment
 def eval_policy(policy, eval_env, seed, eval_episodes=6, render=True):
     eval_env.seed(seed + 100)
     eval_env.fixed_tsp = True
     eval_env.fixed_spill = True
+    spills = np.linspace(eval_env.spill_range[0],eval_env.spill_range[1],num=eval_episodes)
+    np.random.shuffle(spills)
 
     avg_true = 0.
     avg_reward = 0.
@@ -27,6 +27,9 @@ def eval_policy(policy, eval_env, seed, eval_episodes=6, render=True):
     print("Evaluating")
     for i in trange(eval_episodes):
         eval_env.time_step_punish = 1/(eval_episodes-1) * i
+        eval_env.spill_punish = spills[i]
+        eval_env.set_max_spill()
+
         state, done = eval_env.reset(use_gui=render), False
         q_list = []
         t = 0
@@ -83,7 +86,7 @@ if __name__ == "__main__":
     parser.add_argument("--policy_noise", default=0.2, type=float)              # Noise added to target policy during critic update
     parser.add_argument("--noise_clip", default=0.5, type=float)                # Range to clip target policy noise
     parser.add_argument("--start_temperature", default=1, type=float)
-    parser.add_argument("--lr",default=3e-4,type=float)
+    parser.add_argument("--lr",default=1e-4,type=float)
     #parser.add_argument("--time_step_punish", default=0.1, type=float)
     parser.add_argument("--replay_buffer_size", default=1e6, type=int)
     parser.add_argument("--policy_freq", default=2, type=int)       # Frequency of delayed policy updates
