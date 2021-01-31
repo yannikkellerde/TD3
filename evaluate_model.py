@@ -124,10 +124,13 @@ def plot_fill_state(tsp_list,fill_state):
     plot_mean(tsp_list,fill_state,"Time step punish","particles in glass","num particles in glass","Final fill state","fill_state")
 
 def eval_policy(policy, eval_env, seed, eval_episodes=10, render=False):
+    policy.critic.eval()
+    policy.actor.eval()
     eval_env.seed(seed + 100)
     eval_env.fixed_tsp = True
     eval_env.fixed_spill = True
-    eval_env.spill_punish = 1
+    spills = np.linspace(eval_env.spill_range[0],eval_env.spill_range[1],num=eval_episodes)
+    np.random.shuffle(spills)
     all_q_val_lists = []
     b_list = []
     all_reward_lists = []
@@ -139,6 +142,9 @@ def eval_policy(policy, eval_env, seed, eval_episodes=10, render=False):
     print("Evaluating")
     for i in trange(eval_episodes):
         tsp = 1/(eval_episodes-1) * i
+        eval_env.spill_punish = spills[i]
+        eval_env.spill_punish = 15
+        eval_env.set_max_spill()
         tsp_list.append(tsp)
         eval_env.time_step_punish = tsp
         state, done = eval_env.reset(use_gui=render), False
@@ -157,6 +163,7 @@ def eval_policy(policy, eval_env, seed, eval_episodes=10, render=False):
             if render:
                 eval_env.render()
             reward_list.append(reward)
+        print(state[0][-3:])
         all_q_val_lists.append(q_val_list)
         all_reward_lists.append(reward_list)
         all_action_list.append(action_list)
