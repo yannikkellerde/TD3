@@ -98,6 +98,7 @@ if __name__ == "__main__":
     parser.add_argument("--load_replay_buffer",default="",type=str)
     parser.add_argument("--folder_name", type=str, default="")
     parser.add_argument("--norm",type=str, default="")
+    parser.add_argument("--noCDQ",action="store_true")  # Do not use TD3 clipped double Q
     parser.add_argument("--experiment_name",type=str, default="WaterPouring")
     args = parser.parse_args()
     args.save_model = True
@@ -146,7 +147,8 @@ if __name__ == "__main__":
         "max_action":max_action,
         "lr":args.lr,
         "policy_freq": int(args.policy_freq),
-        "norm": None if args.norm=="" else args.norm
+        "norm": None if args.norm=="" else args.norm,
+        "CDQ": not args.noCDQ
     }
 
     # Initialize policy

@@ -21,27 +21,32 @@ class Actor(nn.Module):
         # State expected to be tuple of 0: Box features, 1: convolutional part
         super(Actor, self).__init__()
         
+        #self.architecture = (256,256)
+        self.architecture = (500,400,300)
+
         self.num_features = 128
-        self.num_linear = 256
 
         self.conv1 = nn.Conv2d(1,self.num_features*2,kernel_size=(1,obs_space[1].shape[1]),stride=1)
         self.conv2 = nn.Conv1d(self.num_features*2,self.num_features,kernel_size=1,stride=1)
         
         self.avg_pool = nn.AvgPool2d(kernel_size = (1,obs_space[1].shape[0]))
-        self.l1 = nn.Linear(self.num_features+obs_space[0].shape[0],self.num_linear)
-        self.l2 = nn.Linear(self.num_linear,self.num_linear)
-        self.l3 = nn.Linear(self.num_linear,action_space.shape[0])
+
+        self.linears = nn.ModuleList()
+        for i,dim in enumerate(self.architecture):
+            if i==0:
+                self.linears.append(nn.Linear(self.num_features+obs_space[0].shape[0],dim))
+            else:
+                self.linears.append(nn.Linear(self.architecture[i-1],dim))
+        self.linears.append(nn.Linear(self.architecture[-1],action_space.shape[0]))
 
         self.norm = norm
         if self.norm == "layer":
-            self.ln1 = nn.LayerNorm(self.num_features+obs_space[0].shape[0])
-            self.ln2 = nn.LayerNorm(self.num_linear)
-            self.ln3 = nn.LayerNorm(self.num_linear)
-
+            self.lnorms = [nn.LayerNorm(dim) for dim in self.architecture]
+            self.lnorms = nn.ModuleList(self.lnorms)
+        
         if self.norm == "weight_normalization":
-            self.l1 = nn.utils.weight_norm(self.l1)
-            self.l2 = nn.utils.weight_norm(self.l2)
-            self.l3 = nn.utils.weight_norm(self.l3)
+            for i in range(len(self.linears)):
+                self.linears[i] = nn.utils.weight_norm(self.linears[i])
         
     def forward(self, state_features, state_particles):
         a = torch.unsqueeze(state_particles,1)
@@ -51,43 +56,45 @@ class Actor(nn.Module):
         a = F.relu(self.avg_pool(a))
         a = torch.squeeze(a,dim=2)
         a = torch.cat([a,state_features],1)
-        if self.norm == "layer":
-            a = self.ln1(a)
-        a = F.relu(self.l1(a))
-        if self.norm == "layer":
-            a = self.ln2(a)
-        a = F.relu(self.l2(a))
-        if self.norm == "layer":
-            a = self.ln3(a)
-        a = torch.tanh(self.l3(a))
+        for i in range(len(self.linears)):
+            a = self.linears[i](a)
+            if i!=len(self.linears)-1:
+                a = F.relu(a)
+                if self.norm == "layer":
+                    a = self.lnorms[i](a)
+        a = torch.tanh(a)
         return a
 
 class Q_network(nn.Module):
     def __init__(self, obs_space, action_space, norm=None):
         super(Q_network, self).__init__()
 
+        #self.architecture = (256,256)
+        self.architecture = (500,400,300)
+
         self.num_features = 128
-        self.num_linear = 256
 
         self.conv1 = nn.Conv2d(1,self.num_features*2,kernel_size=(1,obs_space[1].shape[1]),stride=1)
         self.conv2 = nn.Conv1d(self.num_features*2,self.num_features,kernel_size=1,stride=1)
 
         self.avg_pool = nn.AvgPool2d(kernel_size = (1,obs_space[1].shape[0]))
         
-        self.l1 = nn.Linear(self.num_features+obs_space[0].shape[0]+action_space.shape[0],self.num_linear)
-        self.l2 = nn.Linear(self.num_linear,self.num_linear)
-        self.l3 = nn.Linear(self.num_linear,1)
+        self.linears = nn.ModuleList()
+        for i,dim in enumerate(self.architecture):
+            if i==0:
+                self.linears.append(nn.Linear(self.num_features+obs_space[0].shape[0]+action_space.shape[0],dim))
+            else:
+                self.linears.append(nn.Linear(self.architecture[i-1],dim))
+        self.linears.append(nn.Linear(self.architecture[-1],action_space.shape[0]))
 
         self.norm = norm
         if self.norm == "layer":
-            self.ln1 = nn.LayerNorm(self.num_features+obs_space[0].shape[0]+action_space.shape[0])
-            self.ln2 = nn.LayerNorm(self.num_linear)
-            self.ln3 = nn.LayerNorm(self.num_linear)
-
+            self.lnorms = [nn.LayerNorm(dim) for dim in self.architecture]
+            self.lnorms = nn.ModuleList(self.lnorms)
+        
         if self.norm == "weight_normalization":
-            self.l1 = nn.utils.weight_norm(self.l1)
-            self.l2 = nn.utils.weight_norm(self.l2)
-            self.l3 = nn.utils.weight_norm(self.l3)
+            for i in range(len(self.linears)):
+                self.linears[i] = nn.utils.weight_norm(self.linears[i])
 
     def forward(self, state_features, state_particles, action):
         q = torch.unsqueeze(state_particles,1)
@@ -97,41 +104,44 @@ class Q_network(nn.Module):
         q = F.relu(self.avg_pool(q))
         q = torch.squeeze(q,dim=2)
         q = torch.cat([q,state_features,action],1)
-        if self.norm == "layer":
-            q = self.ln1(q)
-        q = F.relu(self.l1(q))
-        if self.norm == "layer":
-            q = self.ln2(q)
-        q = F.relu(self.l2(q))
-        if self.norm == "layer":
-            q = self.ln3(q)
-        q = self.l3(q)
+        for i in range(len(self.linears)):
+            q = self.linears[i](q)
+            if i!=len(self.linears)-1:
+                q = F.relu(q)
+                if self.norm == "layer":
+                    q = self.lnorms[i](q)
         return q
 
 class Critic(nn.Module):
-    def __init__(self, obs_space, action_space, norm=None):
+    def __init__(self, obs_space, action_space, norm=None, CDQ=True):
         super(Critic, self).__init__()
 
         self.q1 = Q_network(obs_space,action_space,norm)
-        self.q2 = Q_network(obs_space,action_space,norm)
+        self.CDQ = CDQ
+        if self.CDQ:
+            self.q2 = Q_network(obs_space,action_space,norm)
 
     def forward(self, state_features, state_particles, action):
+        if not self.CDQ:
+            return (self.q1(state_features, state_particles,action),)
         return self.q1(state_features,state_particles,action), self.q2(state_features,state_particles,action)
 
     def Q1(self, state_features, state_particles, action):
         return self.q1(state_features,state_particles,action)
 
 class TD3(TD3_base):
-    def __init__(self,obs_space,action_space,lr=1e-4,norm=None,**kwargs):
+    def __init__(self,obs_space,action_space,lr=1e-4,norm=None,CDQ=True,**kwargs):
         self.actor = Actor(obs_space, action_space,norm).to(device)
         self.actor_target = Actor(obs_space, action_space,norm).to(device)
         self.actor_target.load_state_dict(self.actor.state_dict())
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=lr)
 
-        self.critic = Critic(obs_space, action_space, norm).to(device)
-        self.critic_target = Critic(obs_space, action_space, norm).to(device)
+        self.critic = Critic(obs_space, action_space, norm,CDQ=CDQ).to(device)
+        self.critic_target = Critic(obs_space, action_space, norm,CDQ=CDQ).to(device)
         self.critic_target.load_state_dict(self.critic.state_dict())
         self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=lr)
+
+        self.CDQ = CDQ
         super(TD3, self).__init__(**kwargs)
 
     def select_action(self, state):
@@ -149,7 +159,6 @@ class TD3(TD3_base):
 
 
     def train(self, replay_buffer, batch_size=100):
-        start = time.perf_counter()
         self.total_it += 1
 
         # Sample replay buffer 
@@ -166,16 +175,21 @@ class TD3(TD3_base):
             )
 
             # Compute the target Q value
-            target_Q1, target_Q2 = self.critic_target(next_state_features,next_state_particles, next_action)
-            target_Q = torch.min(target_Q1, target_Q2)
+            if self.CDQ:
+                target_Q1, target_Q2 = self.critic_target(next_state_features,next_state_particles, next_action)
+                target_Q = torch.min(target_Q1, target_Q2)
+            else:
+                target_Q = self.critic_target(next_state_features,next_state_particles, next_action)[0]
             target_Q = reward + not_done * self.discount * target_Q
 
-        start = time.perf_counter()
         # Get current Q estimates
-        current_Q1, current_Q2 = self.critic(state_features,state_particles, action)
-        # Compute critic loss
-        start = time.perf_counter()
-        critic_loss = F.mse_loss(current_Q1, target_Q) + F.mse_loss(current_Q2, target_Q)
+        if self.CDQ:
+            current_Q1, current_Q2 = self.critic(state_features,state_particles, action)
+            # Compute critic loss
+            critic_loss = F.mse_loss(current_Q1, target_Q) + F.mse_loss(current_Q2, target_Q)
+        else:
+            current_Q1 = self.critic(state_features,state_particles, action)[0]
+            critic_loss = F.mse_loss(current_Q1, target_Q)
 
         # Optimize the critic
         self.critic_optimizer.zero_grad()

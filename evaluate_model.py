@@ -141,13 +141,13 @@ def eval_policy(policy, eval_env, seed, eval_episodes=10, render=False):
     glass_list = []
     print("Evaluating")
     for i in trange(eval_episodes):
+        state, done = eval_env.reset(use_gui=render), False
         tsp = 1/(eval_episodes-1) * i
         eval_env.spill_punish = spills[i]
         eval_env.spill_punish = 15
         eval_env.set_max_spill()
         tsp_list.append(tsp)
         eval_env.time_step_punish = tsp
-        state, done = eval_env.reset(use_gui=render), False
         b = 0
         reward_list = []
         q_val_list = []
