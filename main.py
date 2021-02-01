@@ -63,7 +63,7 @@ def update_temperature(env,timestep,start_increase,start_temperature):
     env.temperature = min(1,max(0,(timestep-start_increase)/time_full_temp*(1-start_temperature)+start_temperature))
 
 """
-python3.7 main.py --seed 66 --start_training 0 --start_policy 0 --max_timesteps 1000000 --expl_noise 0.2 --folder_name models/pouring_2 --experiment_name pouring-corr-noise --load_replay_buffer replay_buffers_1611535680.8310199/ --load_model models/pouring_f
+python3.7 main.py --start_policy 100000 --start_training 100000 --max_timesteps 2500000 --norm layer --noCDQ --folder_name models/no_CDQ --experiment_name no_CDQ
 """
 
 if __name__ == "__main__":

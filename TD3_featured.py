@@ -97,7 +97,7 @@ class Critic(nn.Module):
 
 
 class TD3(TD3_base):
-    def __init__(self,obs_space,action_space,max_action=1,lr=1e-4,norm=None,**kwargs):
+    def __init__(self,obs_space,action_space,max_action=1,lr=1e-4,norm=None,CDQ=True,**kwargs):
         self.actor = Actor(obs_space.shape[0], action_space.shape[0], max_action, norm).to(device)
         self.actor_target = copy.deepcopy(self.actor)
         print(list(self.actor.parameters()),self.actor.linears)
