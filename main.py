@@ -14,21 +14,28 @@ from utils.noise import OrnsteinUhlenbeckActionNoise
 import pickle
 from rtpt.rtpt import RTPT
 
-def eval_policy(policy, eval_env, seed, eval_episodes=6, render=True):
+def eval_policy(policy, eval_env, seed, eval_episodes=10, render=True):
     eval_env.seed(seed + 100)
     eval_env.fixed_tsp = True
     eval_env.fixed_spill = True
+    eval_env.fixed_target_fill = True
     spills = np.linspace(eval_env.spill_range[0],eval_env.spill_range[1],num=eval_episodes)
     np.random.shuffle(spills)
+    tfills = np.linspace(eval_env.target_fill_range[0],eval_env.target_fill_range[1],num=eval_episodes)
+    np.random.shuffle(tfills)
 
     avg_true = 0.
     avg_reward = 0.
     avg_q = 0.
     print("Evaluating")
     for i in trange(eval_episodes):
-        eval_env.time_step_punish = 1/(eval_episodes-1) * i
-        eval_env.spill_punish = spills[i]
-        eval_env.set_max_spill()
+        if args.fixed_tsp is None:
+            eval_env.time_step_punish = 1/(eval_episodes-1) * i
+        if args.fixed_spill_punish is None:
+            eval_env.spill_punish = spills[i]
+            eval_env.set_max_spill()
+        if args.fixed_target_fill is None:
+            eval_env.target_fill_state = tfills[i]
 
         state, done = eval_env.reset(use_gui=render), False
         q_list = []
@@ -53,8 +60,12 @@ def eval_policy(policy, eval_env, seed, eval_episodes=6, render=True):
     print("---------------------------------------")
     print(f"Evaluation over {eval_episodes} episodes: {avg_reward:.3f} avg true reward: {avg_true:.3f} avg q value {avg_q}")
     print("---------------------------------------")
-    eval_env.fixed_tsp = False
-    eval_env.fixed_spill = False
+    if args.fixed_spill_punish is None:
+        eval_env.fixed_spill = False
+    if args.fixed_tsp is None:
+        eval_env.fixed_tsp = False
+    if args.fixed_target_fill is None:
+        eval_env.fixed_target_fill = False
     eval_env.reset(use_gui=False)
     return avg_q,avg_true
 
@@ -99,6 +110,9 @@ if __name__ == "__main__":
     parser.add_argument("--folder_name", type=str, default="")
     parser.add_argument("--norm",type=str, default="")
     parser.add_argument("--noCDQ",action="store_true")  # Do not use TD3 clipped double Q
+    parser.add_argument("--fixed_tsp",type=float,default=None)
+    parser.add_argument("--fixed_spill_punish",type=int,default=None)
+    parser.add_argument("--fixed_target_fill",type=int,default=None)
     parser.add_argument("--experiment_name",type=str, default="WaterPouring")
     args = parser.parse_args()
     args.save_model = True
@@ -126,7 +140,15 @@ if __name__ == "__main__":
         os.makedirs("./models")
 
     
-    env = gym.make(args.env,policy_uncertainty=args.policy_uncertainty)
+    env = gym.make(args.env,policy_uncertainty=args.policy_uncertainty,fixed_tsp=args.fixed_tsp is not None,
+                   fixed_target_fill=args.fixed_target_fill is not None,fixed_spill=args.fixed_spill_punish is not None)
+    if args.fixed_tsp is not None:
+        env.time_step_punish = args.fixed_tsp
+    if args.fixed_target_fill is not None:
+        env.target_fill_state = args.fixed_target_fill
+    if args.fixed_spill_punish is not None:
+        env.spill_punish = args.fixed_spill_punish
+    print(env.observation_space,env.action_space)
     #env.time_step_punish = args.time_step_punish
     env.temperature = args.start_temperature
     print("made Env")
