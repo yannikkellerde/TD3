@@ -109,7 +109,7 @@ def plot_action(all_action_list,path,show=False):
         plt.show()
     plt.cla()
 
-def plot_2d(tsps,spills,values,title,path,show=False):
+def plot_2d(tsps,spills,values,title,path,show=False,sigma=5):
     #S,T = np.meshgrid(tsps,spills)
     V = np.array(values).reshape((len(tsps),len(tsps)))
     print(V)
@@ -127,7 +127,7 @@ def plot_2d(tsps,spills,values,title,path,show=False):
         plt.show()
     plt.clf()
 
-def eval_2d(policy,eval_env,seed,path,root_episodes=30,render=False):
+def eval_2d(policy,eval_env,seed,path,root_episodes=30,sigma=5,render=False):
     os.makedirs(path,exist_ok=True)
     policy.critic.eval()
     policy.actor.eval()
@@ -181,11 +181,11 @@ def eval_2d(policy,eval_env,seed,path,root_episodes=30,render=False):
     #plot_2d(tsps,spills,spill_list,"Spilled",os.path.join(path,"spilled.svg"))
     #plot_2d(tsps,spills,max_angle_list,"Max angle",os.path.join(path,"max_angle.svg"))
     #plot_2d(tsps,spills,rew_list,"Total return",os.path.join(path,"total_return.svg"))
-    plot_2d(tsps,spills,b_list,"episode_length",os.path.join(path,"episode_length.svg"))
+    plot_2d(tsps,spills,b_list,"episode_length",os.path.join(path,"episode_length.svg"),sigma=sigma)
     #plot_q_compare(all_reward_lists,all_q_val_lists,args.discount)
 
 
-def eval_1d(policy, eval_env, seed, basepath="plots/test", eval_episodes=10, to_eval="tsp", render=False):
+def eval_1d(policy, eval_env, seed, basepath="plots/test", eval_episodes=10, to_eval="tsp", N=5, render=False):
     os.makedirs(basepath,exist_ok=True)
     name_map = {"tsp":"Time Step Punish",
                 "spill":"Spill Punish",
@@ -196,7 +196,7 @@ def eval_1d(policy, eval_env, seed, basepath="plots/test", eval_episodes=10, to_
     eval_env.fixed_tsp = True
     eval_env.fixed_spill = True
     eval_env.fixed_target_fill = True
-    eval_env.target_fill_state = eval_env.max_particles
+    eval_env.target_fill_state = eval_env.max_in_glas
     eval_env.time_step_punish = 0.5
     eval_env.spill_punish = 25
     eval_env.set_max_spill()
@@ -255,17 +255,17 @@ def eval_1d(policy, eval_env, seed, basepath="plots/test", eval_episodes=10, to_
     print(avg_reward)
 
     plot_mean(ev_list,b_list,name_map[to_eval],"Episode length","max episode length",
-              "Episode lengths","episode_length",os.path.join(basepath,f"{to_eval}_episode_length.svg"))
+              "Episode lengths","episode_length",os.path.join(basepath,f"{to_eval}_episode_length.svg"),N=N)
     plot_mean(ev_list,max_angle_list,name_map[to_eval],"Max angle","Max angle",
-              f"Max angle of inclination vs {name_map[to_eval]}","angles",os.path.join(basepath,f"{to_eval}_angle.svg"))
+              f"Max angle of inclination vs {name_map[to_eval]}","angles",os.path.join(basepath,f"{to_eval}_angle.svg"),N=N)
     reward_sum = [np.sum(x) for x in all_reward_lists]
     plot_mean(ev_list,reward_sum,name_map[to_eval],"Return","total return","total return","return",
-              os.path.join(basepath,f"{to_eval}_return.svg"))
+              os.path.join(basepath,f"{to_eval}_return.svg"),N=N)
     plot_action(all_action_list,os.path.join(basepath,"action.svg"))
     plot_mean(ev_list,spill_list,name_map[to_eval],"Spilled","num particles spilled",
-              "Particles Spilled","spilled",os.path.join(basepath,f"{to_eval}_spilled.svg"))
+              "Particles Spilled","spilled",os.path.join(basepath,f"{to_eval}_spilled.svg"),N=N)
     plot_mean(ev_list,glass_list,name_map[to_eval],"particles in glass","num particles in glass",
-              "Final fill state","fill_state",os.path.join(basepath,f"{to_eval}_fill.svg"))
+              "Final fill state","fill_state",os.path.join(basepath,f"{to_eval}_fill.svg"),N=N)
     plot_q_compare(all_reward_lists,all_q_val_lists,args.discount,os.path.join(basepath,"q_compare.svg"))
 
 
@@ -301,6 +301,7 @@ if __name__ == "__main__":
     parser.add_argument("--path",type=str, default="plots/test")
     parser.add_argument("--to_eval",type=str, default="tsp")
     parser.add_argument("--eval_episodes",type=int,default=100)
+    parser.add_argument("--running_num",type=int, default=5)
     args = parser.parse_args()
     
     env = gym.make(args.env,policy_uncertainty=args.policy_uncertainty)
@@ -352,5 +353,5 @@ if __name__ == "__main__":
 
     # Set seeds
     
-    evaluations = eval_1d(policy, env, args.seed, basepath=args.path, to_eval=args.to_eval, render=args.render, eval_episodes=args.eval_episodes)
-    #eval_2d(policy,env,args.seed,args.path,render=args.render)
+    evaluations = eval_1d(policy, env, args.seed, basepath=args.path, to_eval=args.to_eval, render=args.render, N=args.running_num, eval_episodes=args.eval_episodes)
+    #eval_2d(policy,env,args.seed,args.path,render=args.render,sigma=args.running_num)

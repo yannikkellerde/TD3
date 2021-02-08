@@ -57,7 +57,8 @@ class Actor(nn.Module):
         a = F.relu(self.avg_pool(a))
         a = torch.squeeze(a,dim=2)
         a = torch.cat([a,state_features],1)
-        a = self.lnorm1(a)
+        if self.norm == "layer":
+            a = self.lnorm1(a)
         for i in range(len(self.linears)):
             a = self.linears[i](a)
             if i!=len(self.linears)-1:
@@ -107,7 +108,8 @@ class Q_network(nn.Module):
         q = F.relu(self.avg_pool(q))
         q = torch.squeeze(q,dim=2)
         q = torch.cat([q,state_features,action],1)
-        q = self.lnorm1(q)
+        if self.norm == "layer":
+            q = self.lnorm1(q)
         for i in range(len(self.linears)):
             q = self.linears[i](q)
             if i!=len(self.linears)-1:
