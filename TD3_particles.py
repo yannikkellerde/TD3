@@ -105,9 +105,9 @@ class Q_network(nn.Module):
         q = torch.squeeze(q,dim=3)
         q = F.relu(self.conv2(q))
         q = F.relu(self.avg_pool(q))
-        q = self.lnorm1(q)
         q = torch.squeeze(q,dim=2)
         q = torch.cat([q,state_features,action],1)
+        q = self.lnorm1(q)
         for i in range(len(self.linears)):
             q = self.linears[i](q)
             if i!=len(self.linears)-1:

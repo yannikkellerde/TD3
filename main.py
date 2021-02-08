@@ -74,7 +74,7 @@ def update_temperature(env,timestep,start_increase,start_temperature):
     env.temperature = min(1,max(0,(timestep-start_increase)/time_full_temp*(1-start_temperature)+start_temperature))
 
 """
-python3.7 main.py --start_policy 100000 --start_training 100000 --max_timesteps 2500000 --norm layer --noCDQ --folder_name models/no_CDQ --experiment_name no_CDQ
+python3.7 main.py --fixed_tsp 0.5 --fixed_spill_punish 25 --experiment_name bottle-targ --start_training 100000 --start_policy 100000 --max_timesteps 2500000 --folder_name models/bottle_targ --norm layer
 """
 
 if __name__ == "__main__":

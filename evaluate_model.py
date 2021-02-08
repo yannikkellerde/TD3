@@ -4,7 +4,7 @@ import gym
 import numpy as np
 import torch
 import argparse
-import os
+import os,sys
 import time
 from scipy.ndimage import gaussian_filter
 import matplotlib.pyplot as plt
@@ -46,7 +46,7 @@ def train(state,td3):
     particles = torch.cat(all_part,0)
     td3._actor_learn(features,particles)
 
-def plot_q_compare(rew_lists,q_lists,discount,show=False):
+def plot_q_compare(rew_lists,q_lists,discount,path,show=False):
     maxi = max(len(x) for x in rew_lists)
     print([len(x) for x in rew_lists])
     emp_rewards = [0 for _ in range(len(rew_lists))]
@@ -69,7 +69,7 @@ def plot_q_compare(rew_lists,q_lists,discount,show=False):
     plt.xlabel("time step")
     plt.ylabel("Q-value")
     plt.legend()
-    plt.savefig(f"plots/{MODEL_NAME}/q_compare.svg")
+    plt.savefig(path)
     if show:
         plt.show()
     plt.cla()
@@ -78,7 +78,7 @@ def running_mean(x, N):
     cumsum = np.cumsum(np.insert(x, 0, 0)) 
     return (cumsum[N:] - cumsum[:-N]) / float(N)
 
-def plot_mean(x_ax,vals,xlabel,ylabel,legend_val,title,store_name,show=False,N=5):
+def plot_mean(x_ax,vals,xlabel,ylabel,legend_val,title,store_name,path,show=False,N=5):
     rm = running_mean(vals,N)
     plt.plot(x_ax,vals,label=legend_val)
     plt.plot(x_ax[:len(rm)],rm,label="running mean")
@@ -86,19 +86,12 @@ def plot_mean(x_ax,vals,xlabel,ylabel,legend_val,title,store_name,show=False,N=5
     plt.ylabel(ylabel)
     plt.title(title)
     plt.legend()
-    plt.savefig(f"plots/{MODEL_NAME}/{store_name}.svg")
+    plt.savefig(path)
     if show:
         plt.show()
     plt.cla()
 
-def plot_angles(tsp_list,max_angle_list):
-    plot_mean(tsp_list,max_angle_list,"Time step punish","Max angle","max angle","Max angle of inclination vs time step punish","angles")
-
-def plot_rewards(tsp_list,all_reward_lists):
-    reward_sum = [np.sum(x) for x in all_reward_lists]
-    plot_mean(tsp_list,reward_sum,"Time step punish","Return","total return","total return","return")
-
-def plot_action(all_action_list,show=False):
+def plot_action(all_action_list,path,show=False):
     max_len = max(len(x) for x in all_action_list)
     avg_actions = []
     for i in range(max_len):
@@ -111,19 +104,10 @@ def plot_action(all_action_list,show=False):
     plt.xlabel("Step")
     plt.ylabel("Avg rotation action")
     plt.title("avg rotation action per step")
-    plt.savefig(f"plots/{MODEL_NAME}/action_rotation.png")
+    plt.savefig(path)
     if show:
         plt.show()
     plt.cla()
-
-def plot_episode_length(tsp_list,episode_lengths):
-    plot_mean(tsp_list,episode_lengths,"Time step punish","Episode length","max episode length","Episode lengths","episode_length")
-
-def plot_spilled(tsp_list,spill_list):
-    plot_mean(tsp_list,spill_list,"Time step punish","Spilled","num particles spilled","Particles Spilled","spilled")
-
-def plot_fill_state(tsp_list,fill_state):
-    plot_mean(tsp_list,fill_state,"Time step punish","particles in glass","num particles in glass","Final fill state","fill_state")
 
 def plot_2d(tsps,spills,values,title,path,show=False):
     #S,T = np.meshgrid(tsps,spills)
@@ -201,31 +185,48 @@ def eval_2d(policy,eval_env,seed,path,root_episodes=30,render=False):
     #plot_q_compare(all_reward_lists,all_q_val_lists,args.discount)
 
 
-def eval_policy(policy, eval_env, seed, eval_episodes=10, render=False):
+def eval_1d(policy, eval_env, seed, basepath="plots/test", eval_episodes=10, to_eval="tsp", render=False):
+    os.makedirs(basepath,exist_ok=True)
+    name_map = {"tsp":"Time Step Punish",
+                "spill":"Spill Punish",
+                "targ":"Target fill level"}
     policy.critic.eval()
     policy.actor.eval()
     eval_env.seed(seed + 100)
     eval_env.fixed_tsp = True
     eval_env.fixed_spill = True
-    spills = np.linspace(eval_env.spill_range[0],eval_env.spill_range[1],num=eval_episodes)
-    np.random.shuffle(spills)
+    eval_env.fixed_target_fill = True
+    eval_env.target_fill_state = eval_env.max_particles
+    eval_env.time_step_punish = 0.5
+    eval_env.spill_punish = 25
+    eval_env.set_max_spill()
     all_q_val_lists = []
     b_list = []
     all_reward_lists = []
     max_angle_list = []
     all_action_list = []
-    tsp_list = []
+    ev_list = []
     spill_list = []
     glass_list = []
     print("Evaluating")
     for i in trange(eval_episodes):
         state, done = eval_env.reset(use_gui=render), False
-        tsp = 1/(eval_episodes-1) * i
-        eval_env.spill_punish = spills[i]
-        eval_env.spill_punish = 1
-        eval_env.set_max_spill()
-        tsp_list.append(tsp)
-        eval_env.time_step_punish = tsp
+        if to_eval == "tsp":
+            tsp = (eval_env.time_step_punish_range[0]+(eval_env.time_step_punish_range[1] -
+                  eval_env.time_step_punish_range[0])/(eval_episodes-1) * i)
+            ev_list.append(tsp)
+            eval_env.time_step_punish = tsp
+        elif to_eval == "spill":
+            spill_punish = (eval_env.spill_range[0]+(eval_env.spill_range[1] -
+                            eval_env.spill_range[0])/(eval_episodes-1) * i)
+            eval_env.spill_punish = spill_punish
+            eval_env.set_max_spill()
+            ev_list.append(spill_punish)
+        elif to_eval == "targ":
+            target_fill = (eval_env.target_fill_range[0]+(eval_env.target_fill_range[1] -
+                           eval_env.target_fill_range[0])/(eval_episodes-1) * i)
+            eval_env.target_fill_state = target_fill
+            ev_list.append(target_fill)
         b = 0
         reward_list = []
         q_val_list = []
@@ -253,13 +254,19 @@ def eval_policy(policy, eval_env, seed, eval_episodes=10, render=False):
     avg_reward = np.mean([np.sum(x) for x in all_reward_lists])
     print(avg_reward)
 
-    plot_episode_length(tsp_list,b_list)
-    plot_angles(tsp_list,max_angle_list)
-    plot_action(all_action_list)
-    plot_rewards(tsp_list,all_reward_lists)
-    plot_spilled(tsp_list,spill_list)
-    plot_fill_state(tsp_list,glass_list)
-    plot_q_compare(all_reward_lists,all_q_val_lists,args.discount)
+    plot_mean(ev_list,b_list,name_map[to_eval],"Episode length","max episode length",
+              "Episode lengths","episode_length",os.path.join(basepath,f"{to_eval}_episode_length.svg"))
+    plot_mean(ev_list,max_angle_list,name_map[to_eval],"Max angle","Max angle",
+              f"Max angle of inclination vs {name_map[to_eval]}","angles",os.path.join(basepath,f"{to_eval}_angle.svg"))
+    reward_sum = [np.sum(x) for x in all_reward_lists]
+    plot_mean(ev_list,reward_sum,name_map[to_eval],"Return","total return","total return","return",
+              os.path.join(basepath,f"{to_eval}_return.svg"))
+    plot_action(all_action_list,os.path.join(basepath,"action.svg"))
+    plot_mean(ev_list,spill_list,name_map[to_eval],"Spilled","num particles spilled",
+              "Particles Spilled","spilled",os.path.join(basepath,f"{to_eval}_spilled.svg"))
+    plot_mean(ev_list,glass_list,name_map[to_eval],"particles in glass","num particles in glass",
+              "Final fill state","fill_state",os.path.join(basepath,f"{to_eval}_fill.svg"))
+    plot_q_compare(all_reward_lists,all_q_val_lists,args.discount,os.path.join(basepath,"q_compare.svg"))
 
 
     print("---------------------------------------")
@@ -292,6 +299,8 @@ if __name__ == "__main__":
     parser.add_argument("--norm",type=str, default="")
     parser.add_argument("--render", action="store_true")
     parser.add_argument("--path",type=str, default="plots/test")
+    parser.add_argument("--to_eval",type=str, default="tsp")
+    parser.add_argument("--eval_episodes",type=int,default=100)
     args = parser.parse_args()
     
     env = gym.make(args.env,policy_uncertainty=args.policy_uncertainty)
@@ -343,5 +352,5 @@ if __name__ == "__main__":
 
     # Set seeds
     
-    #evaluations = eval_policy(policy, env, args.seed, render=args.render)
-    eval_2d(policy,env,args.seed,args.path,render=args.render)
+    evaluations = eval_1d(policy, env, args.seed, basepath=args.path, to_eval=args.to_eval, render=args.render, eval_episodes=args.eval_episodes)
+    #eval_2d(policy,env,args.seed,args.path,render=args.render)

@@ -14,6 +14,7 @@ def from_folder(folder):
     ev = [int(x.split("ev-")[1].split("-q")[0]) for x in files]
     print(files[ev.index(max(ev))])
     q = [int(x.split("q-")[1]) for x in files]
+    plt.yscale('symlog')
     plt.plot(ev,label="total return")
     plt.plot(q,label="avg q")
     plt.legend()
