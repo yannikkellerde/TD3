@@ -15,7 +15,7 @@ from utils.noise import OrnsteinUhlenbeckActionNoise
 import pickle
 from rtpt.rtpt import RTPT
 
-def eval_policy(policy, eval_env, seed, eval_episodes=2, render=True):
+def eval_policy(policy, eval_env, seed, eval_episodes=10, render=True):
     eval_env.seed(seed + 100)
     eval_env.fixed_tsp = True
     eval_env.fixed_spill = True
@@ -91,7 +91,7 @@ def add_to_replay_buffer(env,replay_buffer,state,action,reward,next_state,done_b
             replay_buffer.add(manip_state, action, manip_next, manip_reward, done_bool)
 
 """
-python3.7 main.py --fixed_tsp 0.5 --fixed_spill_punish 25 --experiment_name bottle-targ --start_training 100000 --start_policy 100000 --max_timesteps 2500000 --folder_name models/bottle_targ --norm layer
+python3.7 main.py --max_timesteps 2000000 --start_training 100000 --start_policy 100000 --norm layer --fixed_spill_punish 25 --fixed_target_fill 390 --experiment_name tsp-normal --folder models/tsp-normal
 """
 
 if __name__ == "__main__":
