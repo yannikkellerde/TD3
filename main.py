@@ -9,12 +9,13 @@ import os
 import time
 import json
 from tqdm import tqdm,trange
+from copy import deepcopy
 from utils.noise import OrnsteinUhlenbeckActionNoise
 
 import pickle
 from rtpt.rtpt import RTPT
 
-def eval_policy(policy, eval_env, seed, eval_episodes=10, render=True):
+def eval_policy(policy, eval_env, seed, eval_episodes=2, render=True):
     eval_env.seed(seed + 100)
     eval_env.fixed_tsp = True
     eval_env.fixed_spill = True
@@ -24,7 +25,6 @@ def eval_policy(policy, eval_env, seed, eval_episodes=10, render=True):
     tfills = np.linspace(eval_env.target_fill_range[0],eval_env.target_fill_range[1],num=eval_episodes)
     np.random.shuffle(tfills)
 
-    avg_true = 0.
     avg_reward = 0.
     avg_q = 0.
     print("Evaluating")
@@ -46,7 +46,6 @@ def eval_policy(policy, eval_env, seed, eval_episodes=10, render=True):
             state, reward, done, info = eval_env.step(action)
             if render:
                 eval_env.render()
-            avg_true += info["true_reward"]
             avg_reward += reward
             q_list.append(q)
             t+=1
@@ -54,11 +53,10 @@ def eval_policy(policy, eval_env, seed, eval_episodes=10, render=True):
         avg_q += np.mean(q_list)
 
     avg_reward /= eval_episodes
-    avg_true /= eval_episodes
     avg_q /= eval_episodes
 
     print("---------------------------------------")
-    print(f"Evaluation over {eval_episodes} episodes: {avg_reward:.3f} avg true reward: {avg_true:.3f} avg q value {avg_q}")
+    print(f"Evaluation over {eval_episodes} episodes: {avg_reward:.3f} avg q value {avg_q}")
     print("---------------------------------------")
     if args.fixed_spill_punish is None:
         eval_env.fixed_spill = False
@@ -67,11 +65,30 @@ def eval_policy(policy, eval_env, seed, eval_episodes=10, render=True):
     if args.fixed_target_fill is None:
         eval_env.fixed_target_fill = False
     eval_env.reset(use_gui=False)
-    return avg_q,avg_true
+    return avg_q,avg_reward
 
-def update_temperature(env,timestep,start_increase,start_temperature):
-    time_full_temp = 2e5
-    env.temperature = min(1,max(0,(timestep-start_increase)/time_full_temp*(1-start_temperature)+start_temperature))
+def add_to_replay_buffer(env,replay_buffer,state,action,reward,next_state,done_bool):
+    replay_buffer.add(state, action, next_state, reward, done_bool)
+    if args.hindsight_number>0 and not (args.fixed_tsp and args.fixed_spill_punish and args.fixed_target_fill):
+        for i in range(args.hindsight_number):
+            if args.fixed_tsp:
+                tsp = env.time_step_punish
+            else:
+                tsp = env._get_random(env.time_step_punish_range)
+            if args.fixed_spill_punish:
+                spill_punish = env.spill_punish
+            else:
+                spill_punish = env._get_random(env.spill_range)
+            if args.fixed_target_fill:
+                target_fill = env.target_fill_state
+            else:
+                target_fill = env._get_random(env.target_fill_range)
+            manip_reward = env._imagine_reward(tsp,spill_punish,target_fill)
+            manip_state = deepcopy(state)
+            manip_next = deepcopy(next_state)
+            env.manip_state(manip_state,tsp,spill_punish,target_fill)
+            env.manip_state(manip_next,tsp,spill_punish,target_fill)
+            replay_buffer.add(manip_state, action, manip_next, manip_reward, done_bool)
 
 """
 python3.7 main.py --fixed_tsp 0.5 --fixed_spill_punish 25 --experiment_name bottle-targ --start_training 100000 --start_policy 100000 --max_timesteps 2500000 --folder_name models/bottle_targ --norm layer
@@ -96,7 +113,6 @@ if __name__ == "__main__":
     parser.add_argument("--tau", default=0.005, type=float)                     # Target network update rate
     parser.add_argument("--policy_noise", default=0.2, type=float)              # Noise added to target policy during critic update
     parser.add_argument("--noise_clip", default=0.5, type=float)                # Range to clip target policy noise
-    parser.add_argument("--start_temperature", default=1, type=float)
     parser.add_argument("--lr",default=1e-4,type=float)
     #parser.add_argument("--time_step_punish", default=0.1, type=float)
     parser.add_argument("--replay_buffer_size", default=1e6, type=int)
@@ -114,6 +130,7 @@ if __name__ == "__main__":
     parser.add_argument("--fixed_spill_punish",type=int,default=None)
     parser.add_argument("--fixed_target_fill",type=int,default=None)
     parser.add_argument("--experiment_name",type=str, default="WaterPouring")
+    parser.add_argument("--hindsight_number",type=int, default=0)
     args = parser.parse_args()
     args.save_model = True
 
@@ -150,7 +167,6 @@ if __name__ == "__main__":
         env.spill_punish = args.fixed_spill_punish
     print(env.observation_space,env.action_space)
     #env.time_step_punish = args.time_step_punish
-    env.temperature = args.start_temperature
     print("made Env")
 
 
@@ -200,7 +216,6 @@ if __name__ == "__main__":
 
     state, done = env.reset(), False
     episode_reward = 0
-    episode_true_reward = 0
     episode_timesteps = 0
     episode_num = 0
 
@@ -233,10 +248,9 @@ if __name__ == "__main__":
             done_bool = float(done)
 
         # Store data in replay buffer
-        replay_buffer.add(state, action, next_state, reward, done_bool)
+        add_to_replay_buffer(env,replay_buffer,state,action,reward,next_state,done_bool)
         state = next_state
         episode_reward += reward
-        episode_true_reward += info["true_reward"]
 
         # Train agent after collecting sufficient data
         if t >= args.start_training:
@@ -250,17 +264,14 @@ if __name__ == "__main__":
             # +1 to account for 0 indexing. +0 on ep_timesteps since it will increment +1 even if done=True
             print(f"episode time {time.perf_counter()-start}")
             start = time.perf_counter()
-            print(f"Total T: {t+1} Episode Num: {episode_num+1} Episode T: {episode_timesteps} Reward: {episode_reward:.3f}"
-                  f" True Reward {episode_true_reward:.3f}")
+            print(f"Total T: {t+1} Episode Num: {episode_num+1} Episode T: {episode_timesteps} Reward: {episode_reward:.3f}")
             # Reset environment
             env.seed(args.seed)
             state, done = env.reset(), False
             uhlbeck.reset()
             episode_reward = 0
-            episode_true_reward = 0
             episode_timesteps = 0
             episode_num += 1 
-            update_temperature(env,t,args.start_policy,args.start_temperature)
             if episode_num % args.eval_freq == 0 and (episode_num==args.eval_freq or t>args.start_training):
                 evaluations.append(eval_policy(policy, env, args.seed,render=args.render))
                 np.save(f"./results/{os.path.basename(folder_name)}.npy", evaluations)
