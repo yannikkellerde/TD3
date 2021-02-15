@@ -92,7 +92,7 @@ class Q_network(nn.Module):
 
         self.norm = norm
         if self.norm == "layer":
-            self.lnorm1 = nn.LayerNorm(self.num_features+obs_space[0].shape[0])
+            self.lnorm1 = nn.LayerNorm(self.num_features+obs_space[0].shape[0]+action_space.shape[0])
             self.lnorms = [nn.LayerNorm(dim) for dim in self.architecture]
             self.lnorms = nn.ModuleList(self.lnorms)
         
