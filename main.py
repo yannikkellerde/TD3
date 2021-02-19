@@ -90,7 +90,7 @@ def add_to_replay_buffer(env,replay_buffer,state,action,reward,next_state,done_b
             replay_buffer.add(manip_state, action, manip_next, manip_reward, done_bool)
 
 """
-python3.7 main.py --max_timesteps 2000000 --start_training 100000 --start_policy 100000 --norm layer --fixed_spill_punish 25 --fixed_target_fill 390 --experiment_name tsp-normal --folder models/tsp-normal
+python3.7 main.py --max_timesteps 1500000 --start_training 100000 --start_policy 100000 --norm layer --fixed_spill_punish 25 --fixed_target_fill 390 --experiment_name pouring-tsp --folder models/tsp-no-discount --discount 0.999
 """
 
 if __name__ == "__main__":
@@ -210,7 +210,7 @@ if __name__ == "__main__":
         replay_buffer = ReplayBuffer(env.observation_space, env.action_space,max_size=int(args.replay_buffer_size))
     
     # Evaluate untrained policy
-    #evaluations = [eval_policy(policy, env, args.seed,render=args.render)]
+    evaluations = [eval_policy(policy, env, args.seed,render=args.render)]
     env.seed(args.seed)
 
     state, done = env.reset(), False
