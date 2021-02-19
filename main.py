@@ -33,7 +33,6 @@ def eval_policy(policy, eval_env, seed, eval_episodes=10, render=True):
             eval_env.time_step_punish = 1/(eval_episodes-1) * i
         if args.fixed_spill_punish is None:
             eval_env.spill_punish = spills[i]
-            eval_env.set_max_spill()
         if args.fixed_target_fill is None:
             eval_env.target_fill_state = tfills[i]
 
@@ -211,7 +210,7 @@ if __name__ == "__main__":
         replay_buffer = ReplayBuffer(env.observation_space, env.action_space,max_size=int(args.replay_buffer_size))
     
     # Evaluate untrained policy
-    evaluations = [eval_policy(policy, env, args.seed,render=args.render)]
+    #evaluations = [eval_policy(policy, env, args.seed,render=args.render)]
     env.seed(args.seed)
 
     state, done = env.reset(), False
@@ -275,7 +274,7 @@ if __name__ == "__main__":
             if episode_num % args.eval_freq == 0 and (episode_num==args.eval_freq or t>args.start_training):
                 evaluations.append(eval_policy(policy, env, args.seed,render=args.render))
                 np.save(f"./results/{os.path.basename(folder_name)}.npy", evaluations)
-                if args.save_model: policy.save(folder_name+f"_ep-{episode_num}_ev-{int(evaluations[-1][1])}-q-{int(evaluations[-1][0])}")
+                if args.save_model: policy.save(folder_name+f"_ep-{episode_num}_t-{t}_ev-{int(evaluations[-1][1])}_q-{int(evaluations[-1][0])}")
         # Evaluate episode
     replay_buffer.save(REPLAY_BUFFER_PATH+"_"+str(time.time()))
     policy.save(folder_name+"_final")
