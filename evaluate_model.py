@@ -1,18 +1,17 @@
 import pysplishsplash
 import gym
 
+import pickle
 import numpy as np
 import torch
 import argparse
 import os,sys
 import time
-from scipy.ndimage import gaussian_filter
+from scipy.ndimage import gaussian_filter,gaussian_filter1d
 import matplotlib.pyplot as plt
 from tqdm import tqdm,trange
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-MODEL_NAME = "g2g"
-os.makedirs(os.path.join("plots",MODEL_NAME),exist_ok=True)
 
 def convert_state_to_torch(state):
     features = torch.FloatTensor(np.array([state[0]]).reshape(1, -1)).to(device)
@@ -78,14 +77,18 @@ def running_mean(x, N):
     cumsum = np.cumsum(np.insert(x, 0, 0)) 
     return (cumsum[N:] - cumsum[:-N]) / float(N)
 
-def plot_mean(x_ax,vals,xlabel,ylabel,legend_val,title,store_name,path,show=False,N=5):
-    rm = running_mean(vals,N)
+def plot_mean(x_ax,vals,xlabel,ylabel,legend_val,title,store_name,path,show=False,sigma=5):
+    rm = gaussian_filter1d(vals,sigma)
+    fig = plt.figure(figsize=(10,4))
     plt.plot(x_ax,vals,label=legend_val)
-    plt.plot(x_ax[:len(rm)],rm,label="running mean")
+    plt.plot(x_ax[:len(rm)],rm,label="gaussian smoothed")
+    plt.xticks(np.arange(min(x_ax),max(x_ax)+1,60))
+    plt.xlim((min(x_ax),max(x_ax)))
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
     plt.title(title)
     plt.legend()
+    plt.tight_layout()
     plt.savefig(path)
     if show:
         plt.show()
@@ -148,7 +151,6 @@ def eval_2d(policy,eval_env,seed,path,root_episodes=30,sigma=5,render=False):
         for tsp in tsps:
             state, done = eval_env.reset(use_gui=render), False
             eval_env.spill_punish = spill
-            eval_env.set_max_spill()
             eval_env.time_step_punish = tsp
             b = 0
             reward_list = []
@@ -185,87 +187,102 @@ def eval_2d(policy,eval_env,seed,path,root_episodes=30,sigma=5,render=False):
     #plot_q_compare(all_reward_lists,all_q_val_lists,args.discount)
 
 
-def eval_1d(policy, eval_env, seed, basepath="plots/test", eval_episodes=10, to_eval="tsp", N=5, render=False):
+def eval_1d(policy, eval_env, seed, basepath="plots/test", eval_episodes=10, to_eval="tsp", N=5, render=False, load=None):
     os.makedirs(basepath,exist_ok=True)
     name_map = {"tsp":"Time Step Punish",
                 "spill":"Spill Punish",
-                "targ":"Target fill level"}
-    policy.critic.eval()
-    policy.actor.eval()
-    eval_env.seed(seed + 100)
-    eval_env.fixed_tsp = True
-    eval_env.fixed_spill = True
-    eval_env.fixed_target_fill = True
-    eval_env.target_fill_state = eval_env.max_in_glas
-    eval_env.time_step_punish = 0.5
-    eval_env.spill_punish = 25
-    eval_env.set_max_spill()
-    all_q_val_lists = []
-    b_list = []
-    all_reward_lists = []
-    max_angle_list = []
-    all_action_list = []
-    ev_list = []
-    spill_list = []
-    glass_list = []
-    print("Evaluating")
-    for i in trange(eval_episodes):
-        state, done = eval_env.reset(use_gui=render), False
-        if to_eval == "tsp":
-            tsp = (eval_env.time_step_punish_range[0]+(eval_env.time_step_punish_range[1] -
-                  eval_env.time_step_punish_range[0])/(eval_episodes-1) * i)
-            ev_list.append(tsp)
-            eval_env.time_step_punish = tsp
-        elif to_eval == "spill":
-            spill_punish = (eval_env.spill_range[0]+(eval_env.spill_range[1] -
-                            eval_env.spill_range[0])/(eval_episodes-1) * i)
-            eval_env.spill_punish = spill_punish
-            eval_env.set_max_spill()
-            ev_list.append(spill_punish)
-        elif to_eval == "targ":
-            target_fill = (eval_env.target_fill_range[0]+(eval_env.target_fill_range[1] -
-                           eval_env.target_fill_range[0])/(eval_episodes-1) * i)
-            eval_env.target_fill_state = target_fill
-            ev_list.append(target_fill)
-        b = 0
-        reward_list = []
-        q_val_list = []
-        action_list = []
-        max_angle = 0
-        while not done:
-            b+=1
-            action = policy.select_action(state)
-            action_list.append(action)
-            max_angle = max(state[0][0],max_angle)
-            q_val_list.append(evalstuff(state,action,policy))
-            state, reward, done, _ = eval_env.step(action)
-            if render:
-                eval_env.render()
-            reward_list.append(reward)
-        print(state[0][-3:])
-        all_q_val_lists.append(q_val_list)
-        all_reward_lists.append(reward_list)
-        all_action_list.append(action_list)
-        spill_list.append(eval_env.particle_locations["spilled"])
-        glass_list.append(eval_env.particle_locations["glas"])
-        max_angle_list.append(max_angle)
-        b_list.append(b)
-    
-    avg_reward = np.mean([np.sum(x) for x in all_reward_lists])
-    print(avg_reward)
+                "targ":"Target fill level (ml)"}
+    if load is None:
+        policy.critic.eval()
+        policy.actor.eval()
+        eval_env.seed(seed + 100)
+        eval_env.fixed_tsp = True
+        eval_env.fixed_spill = True
+        eval_env.fixed_target_fill = True
+        eval_env.target_fill_state = eval_env.max_in_glas
+        eval_env.time_step_punish = 1
+        eval_env.spill_punish = 25
+        all_q_val_lists = []
+        b_list = []
+        all_reward_lists = []
+        max_angle_list = []
+        all_action_list = []
+        ev_list = []
+        spill_list = []
+        glass_list = []
+        print("Evaluating")
+        for i in trange(eval_episodes):
+            state, done = eval_env.reset(use_gui=render), False
+            if to_eval == "tsp":
+                tsp = (eval_env.time_step_punish_range[0]+(eval_env.time_step_punish_range[1] -
+                    eval_env.time_step_punish_range[0])/(eval_episodes-1) * i)
+                ev_list.append(tsp)
+                eval_env.time_step_punish = tsp
+            elif to_eval == "spill":
+                spill_punish = (eval_env.spill_range[0]+(eval_env.spill_range[1] -
+                                eval_env.spill_range[0])/(eval_episodes-1) * i)
+                eval_env.spill_punish = spill_punish
+                ev_list.append(spill_punish)
+            elif to_eval == "targ":
+                target_fill = (eval_env.target_fill_range[0]+(eval_env.target_fill_range[1] -
+                            eval_env.target_fill_range[0])/(eval_episodes-1) * i)
+                eval_env.target_fill_state = target_fill
+                ev_list.append(target_fill)
+            b = 0
+            reward_list = []
+            q_val_list = []
+            action_list = []
+            max_angle = 0
+            while not done:
+                b+=1
+                action = policy.select_action(state)
+                action_list.append(action)
+                max_angle = max(state[0][0],max_angle)
+                q_val_list.append(evalstuff(state,action,policy))
+                state, reward, done, _ = eval_env.step(action)
+                if render:
+                    eval_env.render()
+                reward_list.append(reward)
+            print(state[0][-3:])
+            all_q_val_lists.append(q_val_list)
+            all_reward_lists.append(reward_list)
+            all_action_list.append(action_list)
+            spill_list.append(eval_env.particle_locations["spilled"])
+            glass_list.append(eval_env.particle_locations["glas"])
+            max_angle_list.append(max_angle)
+            b_list.append(b)
+        
+        avg_reward = np.mean([np.sum(x) for x in all_reward_lists])
+        with open(os.path.join(basepath,"data.pkl"),"wb") as f:
+            to_save = [all_q_val_lists, b_list, all_reward_lists,
+                       max_angle_list, all_action_list, ev_list, 
+                       spill_list, glass_list, avg_reward]
+            pickle.dump(to_save,f)
+    else:
+        with open(os.path.join(basepath,"data.pkl"),"rb") as f:
+            all_q_val_lists, b_list, all_reward_lists, max_angle_list, all_action_list, ev_list, spill_list, glass_list, avg_reward = pickle.load(f)
 
-    plot_mean(ev_list,b_list,name_map[to_eval],"Episode length","max episode length",
-              "Episode lengths","episode_length",os.path.join(basepath,f"{to_eval}_episode_length.svg"),N=N)
+
+    if to_eval=="targ":
+        dev_list = (np.array(glass_list)-np.array(ev_list))
+        percent_list = (np.array(glass_list)-np.array(ev_list))/np.array(ev_list)
+        percent_list*=100
+        plot_mean(ev_list,dev_list,name_map[to_eval],"Deviation from target fill level (ml)","Deviation",
+                  "Deviation from target fill level","deviation",os.path.join(basepath,f"{to_eval}_deviation.svg"),sigma=N)
+        plot_mean(ev_list,np.abs(dev_list),name_map[to_eval],"Absolute deviation from target fill level (ml)","Deviation",
+                  "Absolute deviation from target fill level","deviation",os.path.join(basepath,f"{to_eval}_abs_deviation.svg"),sigma=N)
+    plot_mean(ev_list,b_list,name_map[to_eval],"Episode length","Episode length",
+              "Episode lengths","episode_length",os.path.join(basepath,f"{to_eval}_episode_length.svg"),sigma=N)
     plot_mean(ev_list,max_angle_list,name_map[to_eval],"Max angle","Max angle",
-              f"Max angle of inclination vs {name_map[to_eval]}","angles",os.path.join(basepath,f"{to_eval}_angle.svg"),N=N)
+              f"Max angle of inclination vs {name_map[to_eval]}","angles",os.path.join(basepath,f"{to_eval}_angle.svg"),sigma=N)
     reward_sum = [np.sum(x) for x in all_reward_lists]
     plot_mean(ev_list,reward_sum,name_map[to_eval],"Return","total return","total return","return",
-              os.path.join(basepath,f"{to_eval}_return.svg"),N=N)
+              os.path.join(basepath,f"{to_eval}_return.svg"),sigma=N)
     plot_action(all_action_list,os.path.join(basepath,"action.svg"))
     plot_mean(ev_list,spill_list,name_map[to_eval],"Spilled","num particles spilled",
-              "Particles Spilled","spilled",os.path.join(basepath,f"{to_eval}_spilled.svg"),N=N)
+              "Particles Spilled","spilled",os.path.join(basepath,f"{to_eval}_spilled.svg"),sigma=N)
     plot_mean(ev_list,glass_list,name_map[to_eval],"particles in glass","num particles in glass",
-              "Final fill state","fill_state",os.path.join(basepath,f"{to_eval}_fill.svg"),N=N)
+              "Final fill state","fill_state",os.path.join(basepath,f"{to_eval}_fill.svg"),sigma=N)
     plot_q_compare(all_reward_lists,all_q_val_lists,args.discount,os.path.join(basepath,"q_compare.svg"))
 
 
@@ -302,6 +319,7 @@ if __name__ == "__main__":
     parser.add_argument("--to_eval",type=str, default="tsp")
     parser.add_argument("--eval_episodes",type=int,default=100)
     parser.add_argument("--running_num",type=int, default=5)
+    parser.add_argument("--load",type=str, default="")
     args = parser.parse_args()
     
     env = gym.make(args.env,policy_uncertainty=args.policy_uncertainty)
@@ -353,5 +371,5 @@ if __name__ == "__main__":
 
     # Set seeds
     
-    evaluations = eval_1d(policy, env, args.seed, basepath=args.path, to_eval=args.to_eval, render=args.render, N=args.running_num, eval_episodes=args.eval_episodes)
+    evaluations = eval_1d(policy, env, args.seed, basepath=args.path, to_eval=args.to_eval, render=args.render, N=args.running_num, eval_episodes=args.eval_episodes, load=None if args.load=="" else args.load)
     #eval_2d(policy,env,args.seed,args.path,render=args.render,sigma=args.running_num)
