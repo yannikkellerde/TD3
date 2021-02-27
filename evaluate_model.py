@@ -8,6 +8,8 @@ import argparse
 import os,sys
 import time
 from scipy.ndimage import gaussian_filter,gaussian_filter1d
+from scipy.stats import linregress
+import math
 import matplotlib.pyplot as plt
 from tqdm import tqdm,trange
 
@@ -77,11 +79,31 @@ def running_mean(x, N):
     cumsum = np.cumsum(np.insert(x, 0, 0)) 
     return (cumsum[N:] - cumsum[:-N]) / float(N)
 
-def plot_mean(x_ax,vals,xlabel,ylabel,legend_val,title,store_name,path,show=False,sigma=5):
-    rm = gaussian_filter1d(vals,sigma)
+def smooth_compare(x_ax1,x_ax2,vals1,vals2,xlabel,ylabel,legend_vals,path,show=False,sigma=5):
+    fig = plt.figure(figsize=(10,4))
+    lims = (max(min(x_ax1),min(x_ax2)),min(max(x_ax1),max(x_ax2)))
+    v1 = gaussian_filter1d(np.array(vals1,dtype=np.float),sigma)
+    v2 = gaussian_filter1d(np.array(vals2,dtype=np.float),sigma)
+    plt.plot(x_ax1[:len(v1)],v1,label=legend_vals[0],color="darkgreen")
+    plt.plot(x_ax2[:len(v2)],v2,label=legend_vals[1],color="darkblue")
+    plt.xticks(np.arange(lims[0],lims[1]+1,70))
+    plt.xlim(lims[0],lims[1])
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    #plt.title(title)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(path)
+    if show:
+        plt.show()
+    plt.cla()
+
+def plot_mean(x_ax,vals,xlabel,ylabel,legend_val,title,path,show=False,sigma=5):
+    #plt.rcParams.update({'font.size': 17})
+    rm = gaussian_filter1d(np.array(vals,dtype=np.float),sigma)
     fig = plt.figure(figsize=(10,4))
     plt.plot(x_ax,vals,label=legend_val)
-    plt.plot(x_ax[:len(rm)],rm,label="gaussian smoothed")
+    plt.plot(x_ax[:len(rm)],rm,label="gaussian smoothed",linewidth=4.0)
     plt.xticks(np.arange(min(x_ax),max(x_ax)+1,60))
     plt.xlim((min(x_ax),max(x_ax)))
     plt.xlabel(xlabel)
@@ -186,6 +208,45 @@ def eval_2d(policy,eval_env,seed,path,root_episodes=30,sigma=5,render=False):
     plot_2d(tsps,spills,b_list,"episode_length",os.path.join(path,"episode_length.svg"),sigma=sigma)
     #plot_q_compare(all_reward_lists,all_q_val_lists,args.discount)
 
+def compare2(load1,load2,name1,name2,min_rot1,min_rot2,basepath="plots/test",sigma=5,to_eval="targ"):
+    os.makedirs(basepath,exist_ok=True)
+    name_map = {"tsp":"Time Step Punish",
+                "spill":"Spill Punish",
+                "targ":"Target fill level (ml)"}
+    with open(load1,"rb") as f:
+            all_q_val_lists1, b_list1, all_reward_lists1, max_angle_list1, all_action_list1, ev_list1, spill_list1, glass_list1, avg_reward1 = pickle.load(f)
+    with open(load2,"rb") as f:
+            all_q_val_lists2, b_list2, all_reward_lists2, max_angle_list2, all_action_list2, ev_list2, spill_list2, glass_list2, avg_reward2 = pickle.load(f)
+    print(np.sum(spill_list1),np.sum(spill_list2))
+    reward_sum1 = [np.sum(x) for x in all_reward_lists1]
+    reward_sum2 = [np.sum(x) for x in all_reward_lists2]
+    for i in range(len(max_angle_list1)):
+        radians = max_angle_list1[i]*(math.pi-min_rot1)+min_rot1
+        degrees = (radians*180)/math.pi
+        max_angle_list1[i] = degrees
+    for i in range(len(max_angle_list2)):
+        radians = max_angle_list2[i]*(math.pi-min_rot2)+min_rot2
+        degrees = (radians*180)/math.pi
+        max_angle_list2[i] = degrees
+
+    if to_eval=="targ":
+        dev_list1 = (np.array(glass_list1)-np.array(ev_list1))
+        dev_list2 = (np.array(glass_list2)-np.array(ev_list2))
+        smooth_compare(ev_list1,ev_list2,dev_list1,dev_list2,"Target fill level (ml)","Deviation from target fill level (ml)",
+                       [name1,name2],os.path.join(basepath,"deviation.svg"),sigma=sigma)
+        smooth_compare(ev_list1,ev_list2,np.abs(dev_list1),np.abs(dev_list2),"Target fill level (ml)","Deviation from target fill level (ml)",
+                       [name1,name2],os.path.join(basepath,"abs_deviation.svg"),sigma=sigma)
+    smooth_compare(ev_list1,ev_list2,b_list1,b_list2,name_map[to_eval],"Episode length (steps)",
+                   [name1,name2],os.path.join(basepath,"epi_length.svg"),sigma=sigma)
+    smooth_compare(ev_list1,ev_list2,max_angle_list1,max_angle_list2,name_map[to_eval],"Angle (Degrees)",
+                   [name1,name2],os.path.join(basepath,"angle.svg"),sigma=sigma)
+    smooth_compare(ev_list1,ev_list2,reward_sum1,reward_sum2,name_map[to_eval],"Return",
+                   [name1,name2],os.path.join(basepath,"return.svg"),sigma=sigma)
+    smooth_compare(ev_list1,ev_list2,spill_list1,spill_list2,name_map[to_eval],"Spilled",
+                   [name1,name2],os.path.join(basepath,"spilled.svg"),sigma=sigma)
+    smooth_compare(ev_list1,ev_list2,glass_list1,glass_list2,name_map[to_eval],"fill-level (ml)",
+                   [name1,name2],os.path.join(basepath,"fill_state.svg"),sigma=sigma)
+
 
 def eval_1d(policy, eval_env, seed, basepath="plots/test", eval_episodes=10, to_eval="tsp", N=5, render=False, load=None):
     os.makedirs(basepath,exist_ok=True)
@@ -263,26 +324,35 @@ def eval_1d(policy, eval_env, seed, basepath="plots/test", eval_episodes=10, to_
             all_q_val_lists, b_list, all_reward_lists, max_angle_list, all_action_list, ev_list, spill_list, glass_list, avg_reward = pickle.load(f)
 
 
+    for i in range(len(max_angle_list)):
+        radians = max_angle_list[i]*(math.pi-env.min_rotation)+env.min_rotation
+        degrees = (radians*180)/math.pi
+        max_angle_list[i] = degrees
+
+    ev_list = np.array(ev_list)
+    print(linregress(ev_list[ev_list>=100],np.array(b_list)[ev_list>=100]))
+    #print(linregress(ev_list[ev_list>=0],np.array(max_angle_list)[ev_list>=0]))
     if to_eval=="targ":
         dev_list = (np.array(glass_list)-np.array(ev_list))
-        percent_list = (np.array(glass_list)-np.array(ev_list))/np.array(ev_list)
-        percent_list*=100
+        #percent_list = (np.array(glass_list)-np.array(ev_list))/np.array(ev_list)
+        #percent_list*=100
+        #print(linregress(ev_list[ev_list>=340],np.abs(dev_list[ev_list>=340])))
         plot_mean(ev_list,dev_list,name_map[to_eval],"Deviation from target fill level (ml)","Deviation",
-                  "Deviation from target fill level","deviation",os.path.join(basepath,f"{to_eval}_deviation.svg"),sigma=N)
+                  "Deviation from target fill level",os.path.join(basepath,f"{to_eval}_deviation.svg"),sigma=N)
         plot_mean(ev_list,np.abs(dev_list),name_map[to_eval],"Absolute deviation from target fill level (ml)","Deviation",
-                  "Absolute deviation from target fill level","deviation",os.path.join(basepath,f"{to_eval}_abs_deviation.svg"),sigma=N)
+                  "Absolute deviation from target fill level",os.path.join(basepath,f"{to_eval}_abs_deviation.svg"),sigma=N)
     plot_mean(ev_list,b_list,name_map[to_eval],"Episode length","Episode length",
-              "Episode lengths","episode_length",os.path.join(basepath,f"{to_eval}_episode_length.svg"),sigma=N)
-    plot_mean(ev_list,max_angle_list,name_map[to_eval],"Max angle","Max angle",
-              f"Max angle of inclination vs {name_map[to_eval]}","angles",os.path.join(basepath,f"{to_eval}_angle.svg"),sigma=N)
+              "Episode lengths",os.path.join(basepath,f"{to_eval}_episode_length.svg"),sigma=N)
+    plot_mean(ev_list,max_angle_list,name_map[to_eval],"Degrees","Degrees",
+              f"Maximum angle of inclination",os.path.join(basepath,f"{to_eval}_angle.svg"),sigma=N)
     reward_sum = [np.sum(x) for x in all_reward_lists]
-    plot_mean(ev_list,reward_sum,name_map[to_eval],"Return","total return","total return","return",
+    plot_mean(ev_list,reward_sum,name_map[to_eval],"Return","total return","total return",
               os.path.join(basepath,f"{to_eval}_return.svg"),sigma=N)
     plot_action(all_action_list,os.path.join(basepath,"action.svg"))
     plot_mean(ev_list,spill_list,name_map[to_eval],"Spilled","num particles spilled",
-              "Particles Spilled","spilled",os.path.join(basepath,f"{to_eval}_spilled.svg"),sigma=N)
+              "Particles Spilled",os.path.join(basepath,f"{to_eval}_spilled.svg"),sigma=N)
     plot_mean(ev_list,glass_list,name_map[to_eval],"particles in glass","num particles in glass",
-              "Final fill state","fill_state",os.path.join(basepath,f"{to_eval}_fill.svg"),sigma=N)
+              "Final fill state",os.path.join(basepath,f"{to_eval}_fill.svg"),sigma=N)
     plot_q_compare(all_reward_lists,all_q_val_lists,args.discount,os.path.join(basepath,"q_compare.svg"))
 
 
@@ -320,7 +390,16 @@ if __name__ == "__main__":
     parser.add_argument("--eval_episodes",type=int,default=100)
     parser.add_argument("--running_num",type=int, default=5)
     parser.add_argument("--load",type=str, default="")
+    parser.add_argument("--load2",type=str, default="")
+    parser.add_argument("--name1",type=str, default="default1")
+    parser.add_argument("--name2",type=str, default="default2")
+    parser.add_argument("--min_rot1",type=float, default=None)
+    parser.add_argument("--min_rot2",type=float, default=None)
     args = parser.parse_args()
+
+    if args.load2!="":
+        compare2(args.load,args.load2,args.name1,args.name2,args.min_rot1,args.min_rot2,basepath=args.path,sigma=args.running_num,to_eval=args.to_eval)
+        exit()
     
     env = gym.make(args.env,policy_uncertainty=args.policy_uncertainty)
     print(env.observation_space,env.action_space)
@@ -341,18 +420,19 @@ if __name__ == "__main__":
         "norm": None if args.norm=="" else args.norm
     }
 
-    if args.policy == "TD3_featured":
-        from TD3_featured import TD3
-        from my_replay_buffer import ReplayBuffer_featured as ReplayBuffer
-    elif args.policy == "TD3_particles":
-        from TD3_particles import TD3
-        from my_replay_buffer import ReplayBuffer_particles as ReplayBuffer
-    policy = TD3(**kwargs)
+    if args.load == "":
+        if args.policy == "TD3_featured":
+            from TD3_featured import TD3
+            from my_replay_buffer import ReplayBuffer_featured as ReplayBuffer
+        elif args.policy == "TD3_particles":
+            from TD3_particles import TD3
+            from my_replay_buffer import ReplayBuffer_particles as ReplayBuffer
+        policy = TD3(**kwargs)
 
 
-    if args.load_model != "":
-        policy_file = file_name if args.load_model == "default" else args.load_model
-        policy.load(policy_file)
+        if args.load_model != "":
+            policy_file = file_name if args.load_model == "default" else args.load_model
+            policy.load(policy_file)
 
     #for param in policy.actor.parameters():
     #    print(torch.abs(param).mean())

@@ -14,6 +14,7 @@ from utils.noise import OrnsteinUhlenbeckActionNoise
 
 import pickle
 from rtpt.rtpt import RTPT
+filepath = os.path.abspath(os.path.dirname(__file__))
 
 def eval_policy(policy, eval_env, seed, eval_episodes=10, render=True):
     eval_env.seed(seed + 100)
@@ -113,7 +114,6 @@ if __name__ == "__main__":
     parser.add_argument("--policy_noise", default=0.2, type=float)              # Noise added to target policy during critic update
     parser.add_argument("--noise_clip", default=0.5, type=float)                # Range to clip target policy noise
     parser.add_argument("--lr",default=1e-4,type=float)
-    #parser.add_argument("--time_step_punish", default=0.1, type=float)
     parser.add_argument("--replay_buffer_size", default=1e6, type=int)
     parser.add_argument("--policy_freq", default=2, type=int)       # Frequency of delayed policy updates
     parser.add_argument("--save_model", action="store_true")        # Save model and optimizer parameters
@@ -130,6 +130,7 @@ if __name__ == "__main__":
     parser.add_argument("--fixed_target_fill",type=int,default=None)
     parser.add_argument("--experiment_name",type=str, default="WaterPouring")
     parser.add_argument("--hindsight_number",type=int, default=0)
+    parser.add_argument("--human_compare",action="store_true")
     args = parser.parse_args()
     args.save_model = True
 
@@ -155,9 +156,18 @@ if __name__ == "__main__":
     if args.save_model and not os.path.exists("./models"):
         os.makedirs("./models")
 
-    
-    env = gym.make(args.env,policy_uncertainty=args.policy_uncertainty,fixed_tsp=args.fixed_tsp is not None,
-                   fixed_target_fill=args.fixed_target_fill is not None,fixed_spill=args.fixed_spill_punish is not None)
+    env_kwargs = {
+        "policy_uncertainty":args.policy_uncertainty,
+        "fixed_tsp":args.fixed_tsp is not None,
+        "fixed_target_fill":args.fixed_target_fill is not None,
+        "fixed_spill":args.fixed_spill_punish is not None
+    }
+    if args.human_compare:
+        env_kwargs["scene_base"] = "scenes/smaller_scene.json"
+    env = gym.make(args.env,**env_kwargs)
+    if args.human_compare:
+        env.max_in_glas = 215
+        env.target_fill_range = [114,209]
     if args.fixed_tsp is not None:
         env.time_step_punish = args.fixed_tsp
     if args.fixed_target_fill is not None:
@@ -165,7 +175,6 @@ if __name__ == "__main__":
     if args.fixed_spill_punish is not None:
         env.spill_punish = args.fixed_spill_punish
     print(env.observation_space,env.action_space)
-    #env.time_step_punish = args.time_step_punish
     print("made Env")
 
 

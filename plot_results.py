@@ -46,5 +46,5 @@ def compare_folders(f1,f2,path):
     plt.savefig(os.path.join(path,"q-value.svg"))
 
 if __name__ == "__main__":
-    #from_folder(sys.argv[1])
-    compare_folders(*sys.argv[1:])
+    from_folder(sys.argv[1],show=True)
+    #compare_folders(*sys.argv[1:])
