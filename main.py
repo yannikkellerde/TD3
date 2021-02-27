@@ -91,7 +91,7 @@ def add_to_replay_buffer(env,replay_buffer,state,action,reward,next_state,done_b
             replay_buffer.add(manip_state, action, manip_next, manip_reward, done_bool)
 
 """
-python3.7 main.py --max_timesteps 1500000 --start_training 100000 --start_policy 100000 --norm layer --fixed_spill_punish 25 --fixed_target_fill 390 --experiment_name pouring-tsp --folder models/tsp-no-discount --discount 0.999
+python3.7 main.py --start_training 100000 --start_policy 100000 --max_timesteps 1000000 --discount 0.999 --norm layer --folder_name models/hum_compare --fixed_tsp 1 --fixed_spill_punish 25 --experiment_name hum_compare --human_compare
 """
 
 if __name__ == "__main__":
@@ -131,6 +131,7 @@ if __name__ == "__main__":
     parser.add_argument("--experiment_name",type=str, default="WaterPouring")
     parser.add_argument("--hindsight_number",type=int, default=0)
     parser.add_argument("--human_compare",action="store_true")
+    parser.add_argument("--jerk_punish",type=float, default=0)
     args = parser.parse_args()
     args.save_model = True
 
@@ -160,7 +161,8 @@ if __name__ == "__main__":
         "policy_uncertainty":args.policy_uncertainty,
         "fixed_tsp":args.fixed_tsp is not None,
         "fixed_target_fill":args.fixed_target_fill is not None,
-        "fixed_spill":args.fixed_spill_punish is not None
+        "fixed_spill":args.fixed_spill_punish is not None,
+        "jerk_punish":args.jerk_punish
     }
     if args.human_compare:
         env_kwargs["scene_base"] = "scenes/smaller_scene.json"
