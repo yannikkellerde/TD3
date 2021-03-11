@@ -123,7 +123,7 @@ if __name__ == "__main__":
     parser.add_argument("--save_replay_buffer", action="store_true")
     parser.add_argument("--load_replay_buffer",default="",type=str)
     parser.add_argument("--folder_name", type=str, default="")
-    parser.add_argument("--norm",type=str, default="")
+    parser.add_argument("--norm",type=str, default="layer")
     parser.add_argument("--noCDQ",action="store_true")  # Do not use TD3 clipped double Q
     parser.add_argument("--fixed_tsp",type=float,default=None)
     parser.add_argument("--fixed_spill_punish",type=int,default=None)

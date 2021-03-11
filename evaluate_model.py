@@ -9,6 +9,7 @@ import os,sys
 import time
 from scipy.ndimage import gaussian_filter,gaussian_filter1d
 from scipy.stats import linregress
+from scipy.spatial.transform import Rotation as R
 import math
 import matplotlib.pyplot as plt
 from tqdm import tqdm,trange
@@ -84,9 +85,15 @@ def smooth_compare(x_ax1,x_ax2,vals1,vals2,xlabel,ylabel,legend_vals,path,show=F
     lims = (max(min(x_ax1),min(x_ax2)),min(max(x_ax1),max(x_ax2)))
     v1 = gaussian_filter1d(np.array(vals1,dtype=np.float),sigma)
     v2 = gaussian_filter1d(np.array(vals2,dtype=np.float),sigma)
-    plt.plot(x_ax1[:len(v1)],v1,label=legend_vals[0],color="darkgreen")
-    plt.plot(x_ax2[:len(v2)],v2,label=legend_vals[1],color="darkblue")
-    plt.xticks(np.arange(lims[0],lims[1]+1,70))
+    plt.plot(x_ax1[:len(v1)],v1,label=legend_vals[0],color="#00664d",linewidth=2)
+    plt.plot(x_ax1[:len(vals1)],vals1,color="#00664d",alpha=0.4,linewidth=0.8)
+    plt.plot(x_ax2[:len(v2)],v2,label=legend_vals[1],color="#e65c00",linewidth=2)
+    plt.plot(x_ax2[:len(vals2)],vals2,color="#e65c00",alpha=0.4,linewidth=0.8)
+    if ylabel=="Deviation from target fill level (ml)":
+        plt.ylim(0,50)
+    if ylabel=="Spilled":
+        plt.ylim(0,5)
+    plt.xticks(np.arange(lims[0],lims[1]+1,20))
     plt.xlim(lims[0],lims[1])
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
@@ -108,6 +115,8 @@ def plot_mean(x_ax,vals,xlabel,ylabel,legend_val,title,path,show=False,sigma=5):
     plt.xlim((min(x_ax),max(x_ax)))
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
+    if title=="Absolute deviation from target fill level":
+        plt.ylim(0,50)
     plt.title(title)
     plt.legend()
     plt.tight_layout()
@@ -193,7 +202,7 @@ def eval_2d(policy,eval_env,seed,path,root_episodes=30,sigma=5,render=False):
             all_reward_lists.append(reward_list)
             all_action_list.append(action_list)
             spill_list.append(eval_env.particle_locations["spilled"])
-            glass_list.append(eval_env.particle_locations["glas"])
+            glass_list.append(eval_env.particle_locations["glass"])
             max_angle_list.append(max_angle)
             b_list.append(b)
     rew_list = [np.sum(x) for x in all_reward_lists]
@@ -247,6 +256,40 @@ def compare2(load1,load2,name1,name2,min_rot1,min_rot2,basepath="plots/test",sig
     smooth_compare(ev_list1,ev_list2,glass_list1,glass_list2,name_map[to_eval],"fill-level (ml)",
                    [name1,name2],os.path.join(basepath,"fill_state.svg"),sigma=sigma)
 
+def rotation_volume_analysis(policy,eval_env,save_path,render=False):
+    eval_env.fixed_tsp = True
+    eval_env.fixed_spill = True
+    eval_env.time_step_punish = 1
+    eval_env.spill_punish = 25
+    eval_env.fixed_target_fill = True
+    targ_fills = [120,150,180,210]
+    action_lists = []
+    rotation_lists = []
+    volumes_lists = []
+    for tf in targ_fills:
+        eval_env.target_fill_state = tf
+        state, done = eval_env.reset(use_gui=render), False
+        action_list = []
+        rotation_list = []
+        volumes_list = []
+        while not done:
+            action = policy.select_action(state)
+            if render:
+                eval_env.render()
+            volumes_list.append(eval_env.particle_locations["glass"])
+            action_list.append(action[0])
+            bottle_radians = R.from_matrix(env.bottle.rotation).as_euler("zyx")[0]
+            rotation_list.append((bottle_radians/math.pi)*180)
+            state, reward, done, _ = eval_env.step(action)
+        action_lists.append(action_list)
+        rotation_lists.append(rotation_list)
+        volumes_lists.append(volumes_list)
+    with open(save_path,"wb") as f:
+        pickle.dump({"targ_fills":targ_fills,
+                     "actions":action_lists,
+                     "rotations":rotation_lists,
+                     "volumes":volumes_lists},f)
+    
 
 def eval_1d(policy, eval_env, seed, basepath="plots/test", eval_episodes=10, to_eval="tsp", N=5, render=False, load=None):
     os.makedirs(basepath,exist_ok=True)
@@ -260,7 +303,7 @@ def eval_1d(policy, eval_env, seed, basepath="plots/test", eval_episodes=10, to_
         eval_env.fixed_tsp = True
         eval_env.fixed_spill = True
         eval_env.fixed_target_fill = True
-        eval_env.target_fill_state = eval_env.max_in_glas
+        eval_env.target_fill_state = eval_env.max_in_glass
         eval_env.time_step_punish = 1
         eval_env.spill_punish = 25
         all_q_val_lists = []
@@ -288,6 +331,7 @@ def eval_1d(policy, eval_env, seed, basepath="plots/test", eval_episodes=10, to_
                 target_fill = (eval_env.target_fill_range[0]+(eval_env.target_fill_range[1] -
                             eval_env.target_fill_range[0])/(eval_episodes-1) * i)
                 eval_env.target_fill_state = target_fill
+                print(target_fill)
                 ev_list.append(target_fill)
             b = 0
             reward_list = []
@@ -298,18 +342,18 @@ def eval_1d(policy, eval_env, seed, basepath="plots/test", eval_episodes=10, to_
                 b+=1
                 action = policy.select_action(state)
                 action_list.append(action)
-                max_angle = max(state[0][0],max_angle)
+                angle = state[0][0] if type(state)==tuple else state[0]
+                max_angle = max(angle,max_angle)
                 q_val_list.append(evalstuff(state,action,policy))
                 state, reward, done, _ = eval_env.step(action)
                 if render:
                     eval_env.render()
                 reward_list.append(reward)
-            print(state[0][-3:])
             all_q_val_lists.append(q_val_list)
             all_reward_lists.append(reward_list)
             all_action_list.append(action_list)
             spill_list.append(eval_env.particle_locations["spilled"])
-            glass_list.append(eval_env.particle_locations["glas"])
+            glass_list.append(eval_env.particle_locations["glass"])
             max_angle_list.append(max_angle)
             b_list.append(b)
         
@@ -367,7 +411,7 @@ def eval_1d(policy, eval_env, seed, basepath="plots/test", eval_episodes=10, to_
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--policy", default="TD3_particles")                  # Policy name (TD3, DDPG or OurDDPG)
-    parser.add_argument("--env", default="water_pouring:Pouring-mdp-full-v0")          # OpenAI gym environment name
+    parser.add_argument("--env", default="water_pouring:Pouring-mdp-v0")          # OpenAI gym environment name
     parser.add_argument("--seed", default=0, type=int)              # Sets Gym, PyTorch and Numpy seeds
     parser.add_argument("--start_timesteps", default=5e4, type=int) # Time steps initial random policy is used
     parser.add_argument("--eval_freq", default=1e2, type=int)       # How often (time steps) we evaluate
@@ -383,7 +427,7 @@ if __name__ == "__main__":
     #parser.add_argument("--time_step_punish", default=0.1, type=float)
     parser.add_argument("--save_model", action="store_true")        # Save model and optimizer parameters
     parser.add_argument("--load_model", default="")                 # Model load file name, "" doesn't load, "default" uses file_name
-    parser.add_argument("--norm",type=str, default="")
+    parser.add_argument("--norm",type=str, default="layer")
     parser.add_argument("--render", action="store_true")
     parser.add_argument("--path",type=str, default="plots/test")
     parser.add_argument("--to_eval",type=str, default="tsp")
@@ -393,15 +437,27 @@ if __name__ == "__main__":
     parser.add_argument("--load2",type=str, default="")
     parser.add_argument("--name1",type=str, default="default1")
     parser.add_argument("--name2",type=str, default="default2")
-    parser.add_argument("--min_rot1",type=float, default=None)
-    parser.add_argument("--min_rot2",type=float, default=None)
+    parser.add_argument("--min_rot1",type=float, default=1.22)
+    parser.add_argument("--min_rot2",type=float, default=1.22)
+    parser.add_argument("--human_compare",action="store_true")
+    parser.add_argument("--jerk_punish",type=float, default=0)
+    parser.add_argument("--rot_vol_analysis",action="store_true")
     args = parser.parse_args()
 
     if args.load2!="":
         compare2(args.load,args.load2,args.name1,args.name2,args.min_rot1,args.min_rot2,basepath=args.path,sigma=args.running_num,to_eval=args.to_eval)
         exit()
     
-    env = gym.make(args.env,policy_uncertainty=args.policy_uncertainty)
+    env_kwargs = {
+        "policy_uncertainty":args.policy_uncertainty,
+        "jerk_punish":args.jerk_punish
+    }
+    if args.human_compare:
+        env_kwargs["scene_base"] = "scenes/smaller_scene.json"
+    env = gym.make(args.env,**env_kwargs)
+    if args.human_compare:
+        env.max_in_glass = 215
+        env.target_fill_range = [114,209]
     print(env.observation_space,env.action_space)
     print("made Env")
 
@@ -433,23 +489,12 @@ if __name__ == "__main__":
         if args.load_model != "":
             policy_file = file_name if args.load_model == "default" else args.load_model
             policy.load(policy_file)
+    else:
+        policy = None
 
-    #for param in policy.actor.parameters():
-    #    print(torch.abs(param).mean())
-    #exit()
 
-    #print("loading_replay_buffer")
-    #rb = ReplayBuffer(env.observation_space,env.action_space,load_folder="replay_buffers")
-    #print("loaded_replay_buffer")
-
-    #for _ in range(100):
-        #batch = rb.sample(256)
-        #policy._actor_learn(batch[0],batch[1])
-        #train(env.observation_space.sample(),policy)
-
-    print("finished learning")
-
-    # Set seeds
-    
-    evaluations = eval_1d(policy, env, args.seed, basepath=args.path, to_eval=args.to_eval, render=args.render, N=args.running_num, eval_episodes=args.eval_episodes, load=None if args.load=="" else args.load)
+    if args.rot_vol_analysis:
+        rotation_volume_analysis(policy,env,args.path,render=args.render)
+    else:
+        evaluations = eval_1d(policy, env, args.seed, basepath=args.path, to_eval=args.to_eval, render=args.render, N=args.running_num, eval_episodes=args.eval_episodes, load=None if args.load=="" else args.load)
     #eval_2d(policy,env,args.seed,args.path,render=args.render,sigma=args.running_num)
